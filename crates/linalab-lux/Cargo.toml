@@ -1,0 +1,16 @@
+[package]
+name = "linalab-lux"
+version = "0.1.0"
+edition = "2021"
+description = "Cargo installer launcher for the LUX Unity automation CLI."
+license = "MIT"
+repository = "https://github.com/islee23520/lux"
+homepage = "https://github.com/islee23520/lux"
+readme = "README.md"
+keywords = ["unity", "cli", "mcp", "automation", "linalab"]
+categories = ["command-line-utilities", "development-tools"]
+include = ["Cargo.toml", "README.md", "src/main.rs"]
+
+[[bin]]
+name = "lux"
+path = "src/main.rs"
