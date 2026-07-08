@@ -4885,50 +4885,6 @@ fn refresh_lux_unity_context_via_bridge(project_root: &Path) -> anyhow::Result<b
     Ok(true)
 }
 
-fn refresh_lux_unity_context(project_root: &Path) -> anyhow::Result<()> {
-    let launch_target = resolve_unity_launch_target(project_root)?;
-    let results_dir = project_root.join("TestResults");
-    fs::create_dir_all(&results_dir)
-        .with_context(|| format!("failed to create {}", results_dir.display()))?;
-    let log_path = results_dir.join("LuxUnityContextRefresh.log");
-
-    eprintln!(
-        "Lux unity context: refreshing via Unity batch mode for {}",
-        project_root.display()
-    );
-
-    let status = ProcessCommand::new(&launch_target.executable)
-        .args(&launch_target.prefix_args)
-        .arg("-batchmode")
-        .arg("-quit")
-        .arg("-nographics")
-        .arg("-projectPath")
-        .arg(project_root)
-        .arg("-executeMethod")
-        .arg("Linalab.Lux.Editor.LuxUnityContext.Refresh")
-        .arg("-logFile")
-        .arg(&log_path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .with_context(|| {
-            format!(
-                "failed to launch Unity at {}",
-                launch_target.executable.display()
-            )
-        })?;
-
-    if !status.success() {
-        bail!(
-            "Lux Unity context refresh failed. See log: {}",
-            log_path.display()
-        );
-    }
-
-    Ok(())
-}
-
 fn print_lux_unity_status(args: UnityStatusArgs) -> anyhow::Result<()> {
     let project_root = match args.project_path {
         Some(path) => path,
