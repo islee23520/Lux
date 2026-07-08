@@ -4,14 +4,9 @@ use crate::lux_roadmap::{RoadmapPhase, RoadmapPhaseStatus, REMOTE_WEBRTC_EXPERIM
 use lux_project::EngineKind;
 
 pub const GLOBAL_CLI_MCP_BRIDGE_PHASE: &str = "M7: Global CLI MCP Bridge Workflow";
-pub const GODOT_GLOBAL_CLI_MCP_BRIDGE_PHASE: &str = "M7: Godot Global CLI MCP Bridge Workflow";
-pub const THREE_JS_GLOBAL_CLI_MCP_BRIDGE_PHASE: &str =
-    "M7: Three.js Global CLI MCP Bridge Workflow";
 pub const CAPABILITY_GLOBAL_CLI: &str = "global_cli";
 pub const CAPABILITY_MCP_STDIO: &str = "mcp_stdio";
 pub const CAPABILITY_UNITY_BRIDGE_WORKFLOW: &str = "unity_bridge_workflow";
-pub const CAPABILITY_GODOT_BRIDGE_WORKFLOW: &str = "godot_bridge_workflow_partial";
-pub const CAPABILITY_THREE_JS_BRIDGE_WORKFLOW: &str = "three_js_bridge_workflow_planned";
 
 pub fn default_phases() -> Vec<RoadmapPhase> {
     vec![
@@ -35,15 +30,6 @@ pub fn default_experimental_flags() -> HashMap<String, bool> {
 pub fn phase_for_engine(engine: EngineKind) -> RoadmapPhase {
     match engine {
         EngineKind::Unity => planned_phase(GLOBAL_CLI_MCP_BRIDGE_PHASE),
-        EngineKind::Godot => RoadmapPhase {
-            name: GODOT_GLOBAL_CLI_MCP_BRIDGE_PHASE.to_string(),
-            status: RoadmapPhaseStatus::Partial,
-            evidence_path: Some("docs/godot-support.md".to_string()),
-            pushed_at: None,
-            push_git_sha: None,
-            push_evidence_path: None,
-        },
-        EngineKind::ThreeJs => planned_phase(THREE_JS_GLOBAL_CLI_MCP_BRIDGE_PHASE),
     }
 }
 
@@ -61,8 +47,6 @@ pub fn phases_for_engine(engine: EngineKind) -> Vec<RoadmapPhase> {
 pub fn capabilities_for_engine(engine: EngineKind) -> Vec<String> {
     let engine_capability = match engine {
         EngineKind::Unity => CAPABILITY_UNITY_BRIDGE_WORKFLOW,
-        EngineKind::Godot => CAPABILITY_GODOT_BRIDGE_WORKFLOW,
-        EngineKind::ThreeJs => CAPABILITY_THREE_JS_BRIDGE_WORKFLOW,
     };
     [
         CAPABILITY_GLOBAL_CLI,

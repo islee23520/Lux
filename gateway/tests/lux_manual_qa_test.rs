@@ -43,7 +43,6 @@ impl TestProject {
                 screenshot: ManualQaCapabilityStatus::Supported,
                 video: ManualQaCapabilityStatus::Unsupported,
             },
-            godot_cli: None,
         }
     }
 }
@@ -133,57 +132,20 @@ fn screenshot_unsupported_records_blocker_without_requiring_video() {
 }
 
 #[test]
-fn godot_adapter_records_blocker_when_cli_is_missing() {
-    let project = TestProject::new("godot-missing");
-    let mut request = project.opts(ManualQaEngine::Godot);
-    request.godot_cli = Some("__lux_missing_godot_for_h9__".to_string());
+fn unity_adapter_blocks_when_required_command_is_missing() {
+    let project = TestProject::new("unity-missing-required-command");
+    let mut request = project.opts(ManualQaEngine::Unity);
+    request.commands = vec![ManualQaCommand::new(
+        ManualQaPhase::Compile,
+        project.script("compile.sh", "#!/bin/sh\nprintf compile-ok\n"),
+    )];
 
-    let result = capture_manual_qa_evidence(&request).expect("missing Godot should be captured");
+    let result = capture_manual_qa_evidence(&request).expect("blocker evidence should write");
 
     assert_eq!(result.status, ManualQaStatus::Blocked);
     let evidence = read_all(&project.path, &result.evidence_paths);
-    assert!(evidence.contains("\"engine\":\"godot\""));
-    assert!(evidence.contains("missing Godot CLI"));
-}
-
-#[test]
-fn threejs_adapter_records_dev_server_and_browser_screenshot() {
-    let project = TestProject::new("threejs");
-    let screenshot_path = project.path.join("three-shot.png");
-    let screenshot_script = project.script(
-        "browser-shot.sh",
-        &format!(
-            "#!/bin/sh\nprintf png > {}\nprintf 'screenshot_path={}\\n'\n",
-            screenshot_path.display(),
-            screenshot_path.display()
-        ),
-    );
-    let mut request = project.opts(ManualQaEngine::ThreeJs);
-    request.commands = vec![
-        ManualQaCommand::new(
-            ManualQaPhase::DevServer,
-            project.script("dev-server.sh", "#!/bin/sh\nprintf dev-server-ready\n"),
-        ),
-        ManualQaCommand::new(ManualQaPhase::BrowserScreenshot, screenshot_script),
-    ];
-
-    let result = capture_manual_qa_evidence(&request).expect("threejs evidence should capture");
-
-    assert_eq!(result.status, ManualQaStatus::Passed);
-    let evidence = read_all(&project.path, &result.evidence_paths);
-    assert!(evidence.contains("\"phase\":\"dev_server\""));
-    assert!(evidence.contains("\"phase\":\"browser_screenshot\""));
-    assert!(evidence.contains("\"screenshot_path\""));
-    copy_artifact(
-        &project.path,
-        &result.evidence_paths[1],
-        "game-harness-task-9-threejs-dev-server.json",
-    );
-    copy_artifact(
-        &project.path,
-        &result.evidence_paths[2],
-        "game-harness-task-9-threejs-browser-screenshot.json",
-    );
+    assert!(evidence.contains("\"engine\":\"unity\""));
+    assert!(evidence.contains("missing test command"));
 }
 
 fn read_all(project_path: &Path, evidence_paths: &[String]) -> String {

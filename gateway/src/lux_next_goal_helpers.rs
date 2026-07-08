@@ -84,18 +84,12 @@ pub(crate) fn goal_slug(value: &str) -> String {
 fn engine_name(engine: lux_project::EngineKind) -> &'static str {
     match engine {
         lux_project::EngineKind::Unity => "unity",
-        lux_project::EngineKind::Godot => "godot",
-        lux_project::EngineKind::ThreeJs => "three_js",
     }
 }
 
 fn engine_from_policy(policy: &str) -> Option<&'static str> {
     if policy.starts_with("unity") {
         Some("unity")
-    } else if policy.starts_with("godot") {
-        Some("godot")
-    } else if policy.starts_with("three") {
-        Some("three_js")
     } else {
         None
     }

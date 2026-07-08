@@ -8,8 +8,8 @@ pub use capability::{
     EngineCapabilityStatus, EngineKind, ParseCapabilityError,
 };
 pub use detection::{
-    detect_from_cwd, detect_from_path, detect_godot_project, detect_unity_project, DetectedPackage,
-    GodotProjectDetection, ProjectInfo, UnityProjectDetection,
+    detect_from_cwd, detect_from_path, detect_unity_project, DetectedPackage, ProjectInfo,
+    UnityProjectDetection,
 };
 
 pub const CRATE_NAME: &str = env!("CARGO_PKG_NAME");

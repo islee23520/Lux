@@ -8,9 +8,12 @@ namespace Linalab.UnityAiBridge.Editor
     public static class UnityAiBridgeAstContextMenu
     {
         private const string MenuRoot = "Tools/Linalab/Lux/AI Bridge/";
+        private const string CopySelectionContextMenu = MenuRoot + "Copy Selection Context";
         private const string CopySelectionAstMenu = MenuRoot + "Copy Selection AST Context";
         private const string CopyActiveSceneAstMenu = MenuRoot + "Copy Active Scene AST Context";
+        private const string CopyHierarchySelectionContextMenu = "GameObject/Lux/Copy Selection Context";
         private const string CopyHierarchySelectionAstMenu = "GameObject/Lux/Copy Selection AST Context";
+        private const string CopyPropertySelectionContextMenu = "Lux/Copy Selection Context";
         private const string CopyPropertyContextPathMenu = "Lux/Copy Property Context Path";
         private const string CopyPropertyContextJsonMenu = "Lux/Copy Property Context JSON";
 
@@ -18,6 +21,16 @@ namespace Linalab.UnityAiBridge.Editor
         {
             EditorApplication.contextualPropertyMenu -= AddPropertyContextMenuItems;
             EditorApplication.contextualPropertyMenu += AddPropertyContextMenuItems;
+        }
+
+        public static string BuildSelectionContextClipboardText()
+        {
+            return UnityAiBridgeSelectionContext.BuildClipboardText(null);
+        }
+
+        public static string BuildSelectionContextClipboardText(SerializedProperty highlightedProperty)
+        {
+            return UnityAiBridgeSelectionContext.BuildClipboardText(highlightedProperty);
         }
 
         public static string BuildSelectionAstContextJson()
@@ -30,6 +43,13 @@ namespace Linalab.UnityAiBridge.Editor
         {
             var payload = UnityAstSceneReader.ReadScene();
             return JsonUtility.ToJson(payload, true);
+        }
+
+        public static void CopySelectionContext()
+        {
+            var payload = UnityAiBridgeSelectionContext.BuildPayload(null);
+            UnityAiBridgeSelectionContext.CopyPayloadToClipboard(payload);
+            Debug.Log(BuildSelectionContextLogMessage());
         }
 
         public static void CopySelectionAstContext()
@@ -58,6 +78,13 @@ namespace Linalab.UnityAiBridge.Editor
             return JsonUtility.ToJson(context, true);
         }
 
+        public static void CopySelectionContext(SerializedProperty highlightedProperty)
+        {
+            var payload = UnityAiBridgeSelectionContext.BuildPayload(highlightedProperty);
+            UnityAiBridgeSelectionContext.CopyPayloadToClipboard(payload);
+            Debug.Log(BuildSelectionContextLogMessage());
+        }
+
         public static void CopyPropertyContextPath(SerializedProperty property)
         {
             var path = BuildPropertyContextPath(property);
@@ -70,6 +97,12 @@ namespace Linalab.UnityAiBridge.Editor
             var json = BuildPropertyContextJson(property);
             EditorGUIUtility.systemCopyBuffer = json;
             Debug.Log("Lux property context JSON copied.");
+        }
+
+        [MenuItem(CopySelectionContextMenu)]
+        private static void CopySelectionContextMenuItem()
+        {
+            CopySelectionContext();
         }
 
         [MenuItem(CopySelectionAstMenu)]
@@ -88,6 +121,12 @@ namespace Linalab.UnityAiBridge.Editor
         private static void CopyActiveSceneAstMenuItem()
         {
             CopyActiveSceneAstContext();
+        }
+
+        [MenuItem(CopyHierarchySelectionContextMenu, false, 48)]
+        private static void CopyHierarchySelectionContextMenuItem()
+        {
+            CopySelectionContext();
         }
 
         [MenuItem(CopyHierarchySelectionAstMenu, false, 49)]
@@ -109,8 +148,14 @@ namespace Linalab.UnityAiBridge.Editor
                 return;
             }
 
+            var selectionContext = UnityAiBridgeSelectionContext.BuildPayload(property);
             var path = BuildPropertyContextPath(property);
             var json = BuildPropertyContextJson(property);
+            menu.AddItem(new GUIContent(CopyPropertySelectionContextMenu), false, () =>
+            {
+                UnityAiBridgeSelectionContext.CopyPayloadToClipboard(selectionContext);
+                Debug.Log(BuildSelectionContextLogMessage());
+            });
             menu.AddItem(new GUIContent(CopyPropertyContextPathMenu), false, () => CopyTextToClipboard(path, "Lux property context path copied."));
             menu.AddItem(new GUIContent(CopyPropertyContextJsonMenu), false, () => CopyTextToClipboard(json, "Lux property context JSON copied."));
         }
@@ -119,6 +164,11 @@ namespace Linalab.UnityAiBridge.Editor
         {
             EditorGUIUtility.systemCopyBuffer = text;
             Debug.Log(message);
+        }
+
+        private static string BuildSelectionContextLogMessage()
+        {
+            return $"Lux selection context copied: {Selection.gameObjects.Length} GameObject(s).";
         }
     }
 }

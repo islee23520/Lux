@@ -1,0 +1,6 @@
+{
+  "devDependencies": {
+    "uloop-cli": "^2.2.0"
+  },
+  "private": true
+}

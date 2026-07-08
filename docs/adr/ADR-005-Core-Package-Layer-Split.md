@@ -14,7 +14,7 @@ LUX will split stable contracts into one-way Rust core packages while keeping `g
 | Package / crate | Owns | Must not own |
 | --- | --- | --- |
 | `lux-core` | Shared IDs, path wrappers, timestamps, atomic `.lux` IO helpers, redaction-safe primitives. | Axum, clap, engine process execution, network transport, environment-derived behavior. |
-| `lux-project` | Project detection facts and engine capability records for Unity, Godot, and Three.js. | Running engine commands, serving HTTP, or launching tools. |
+| `lux-project` | Unity project detection facts and engine capability records. | Running engine commands, serving HTTP, or launching tools. |
 | `lux-spec-core` | `.lux/specs`, spec/domain/decision/preference models, ambiguity model, migration contracts. | Prompt text, Axum handlers, terminal execution. |
 | `lux-run-core` | Run state, tickets, task DAG, goals, evidence references, continuation state. | Engine execution side effects, git push, server routing. |
 | `lux-bridge-core` | Bridge protocol DTOs, command/result schemas, engine capability/blocker payloads. | TCP transport, Unity launch, uloop process execution. |
@@ -50,7 +50,7 @@ Forbidden edges:
 - `lux-ai-core` -> OpenCode runtime APIs.
 
 ## Purity Rule
-Core crates may define typed data, schema versions, migrations, pure calculations, and owned atomic `.lux` IO helpers where explicitly assigned. Core crates must not own Axum handlers, clap parsing, network transport, process spawning, environment reads that change behavior, or direct Unity/Godot/Three.js/browser/terminal execution.
+Core crates may define typed data, schema versions, migrations, pure calculations, and owned atomic `.lux` IO helpers where explicitly assigned. Core crates must not own Axum handlers, clap parsing, network transport, process spawning, environment reads that change behavior, or direct Unity/browser/terminal execution.
 
 ## Shared File Ownership
 | Shared file | Owner | Rule |
@@ -70,4 +70,4 @@ If a worker needs a shared file owned by another worktree, it writes an integrat
 - Game verification ontology can become a reusable contract instead of gateway-local behavior.
 - Gateway remains the only side-effect owner and HTTP/CLI execution shell.
 - MCP/API clients project canonical state but do not write verification truth directly.
-- Godot and Three.js support stays capability-gated until real surfaces produce evidence.
+- Godot and Three.js are removed from active LUX support; a future engine surface requires a new accepted roadmap decision and evidence plan.

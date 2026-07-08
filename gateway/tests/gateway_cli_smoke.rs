@@ -127,7 +127,6 @@ fn rust_lux_cli_exposes_batch_mode_help_flags() {
     assert_command_help_contains(&["unity", "simulate-mouse-input", "--help"], "--delta-x");
     assert_command_help_contains(&["unity", "simulate-mouse-input", "--help"], "--scroll-y");
     assert_command_help_contains(&["autonomous", "--help"], "dispatch");
-    assert_command_help_contains(&["godot", "--help"], "status");
     assert_command_help_contains(&["bridge", "install", "--help"], "--type");
     assert_command_help_contains(&["mcp", "install", "--help"], "--project-path");
     assert_command_help_contains(&["autonomous", "dry-run", "--help"], "--project-path");
@@ -158,52 +157,20 @@ fn gui_command_is_not_available() {
 }
 
 #[test]
-fn rust_lux_godot_status_reports_separate_gopeak_and_lux_capabilities() {
-    let temp_dir = create_temp_dir("lux-godot-status");
-    let project_root = temp_dir.join("GodotProject");
-    fs::create_dir_all(&project_root).expect("create Godot project");
-    fs::write(
-        project_root.join("project.godot"),
-        "config_version=5\n[application]\nconfig/name=\"Lux Godot Smoke\"\n",
-    )
-    .expect("write project.godot");
-
+fn rust_lux_removed_godot_command_is_not_available() {
     let output = Command::new(env!("CARGO_BIN_EXE_lux"))
-        .args([
-            "godot",
-            "status",
-            "--project-path",
-            project_root.to_str().expect("project path UTF-8"),
-        ])
+        .args(["godot", "--help"])
         .output()
-        .expect("run lux godot status");
+        .expect("run removed lux godot help");
 
-    assert_command_success(&output, "lux godot status");
-    let status: Value = serde_json::from_slice(&output.stdout).expect("status JSON");
-    assert_eq!(status["ok"], true);
-    assert_eq!(status["engine"], "godot");
-    assert!(status["gopeak"]["available_commands"].is_array());
-    assert!(status["gopeak"]["missing_commands"].is_array());
-    assert!(status["lux"]["supported_commands"].is_array());
-    assert!(status["lux"]["unsupported_commands"]
-        .as_array()
-        .expect("unsupported commands")
-        .iter()
-        .any(|command| command.as_str() == Some("godot build")));
-    assert!(status["lux"]["capability_blockers"]
-        .as_array()
-        .expect("capability blockers")
-        .iter()
-        .any(|blocker| blocker["capability"] == "build"
-            && blocker["status"] == "unsupported"
-            && blocker["recommended_next_supported_action"]
-                .as_str()
-                .is_some_and(|action| action.contains("lux godot status"))));
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unrecognized subcommand 'godot'") || stderr.contains("invalid"));
 }
 
 #[test]
-fn rust_lux_godot_status_writes_engine_capabilities_json() {
-    let temp_dir = create_temp_dir("lux-godot-capabilities");
+fn rust_lux_engine_capabilities_json_is_unity_only() {
+    let temp_dir = create_temp_dir("lux-unity-capabilities");
     let project_root = temp_dir.join("GameProject");
     fs::create_dir_all(project_root.join("Assets")).expect("create Assets");
     fs::create_dir_all(project_root.join("ProjectSettings")).expect("create ProjectSettings");
@@ -212,27 +179,8 @@ fn rust_lux_godot_status_writes_engine_capabilities_json() {
         "m_EditorVersion: 2022.3.20f1\n",
     )
     .expect("write Unity marker");
-    fs::write(
-        project_root.join("package.json"),
-        r#"{
-  "dependencies": {
-    "three": "^0.179.0"
-  }
-}"#,
-    )
-    .expect("write Three.js marker");
-
-    let output = Command::new(env!("CARGO_BIN_EXE_lux"))
-        .args([
-            "godot",
-            "status",
-            "--project-path",
-            project_root.to_str().expect("project path UTF-8"),
-        ])
-        .output()
-        .expect("run lux godot status for capability snapshot");
-
-    assert_command_success(&output, "lux godot status for capability snapshot");
+    lux_project::persist_engine_capabilities(&project_root, lux_project::EngineKind::Unity)
+        .expect("engine capabilities should persist");
 
     let capabilities_path = project_root.join(".lux/engines/capabilities.json");
     assert!(
@@ -245,21 +193,14 @@ fn rust_lux_godot_status_writes_engine_capabilities_json() {
     )
     .expect("engine capabilities json should parse");
 
-    assert_eq!(payload["schema_version"], "1");
-    assert_eq!(payload["engine"], "godot");
-    assert_eq!(payload["status"], "unsupported");
+    assert_eq!(payload["schema_version"], 1);
+    assert_eq!(payload["engine"], "unity");
+    assert_eq!(payload["status"], "detected");
     assert_eq!(payload["unity"]["status"], "detected");
-    assert_eq!(payload["godot"]["status"], "unsupported");
-    assert_eq!(payload["three_js"]["status"], "limited");
     assert_eq!(payload["unity"]["detected"], true);
-    assert_eq!(payload["godot"]["detected"], false);
-    assert_eq!(payload["three_js"]["detected"], true);
-    assert!(payload["godot"]["blocker_reason"]
-        .as_str()
-        .is_some_and(|reason| reason.contains("project.godot")));
-    assert!(payload["three_js"]["blocker_reason"]
-        .as_str()
-        .is_some_and(|reason| reason.contains("Three.js")));
+    assert!(payload.get("godot").is_none());
+    assert!(payload.get("three_js").is_none());
+    assert!(payload.get("engines").is_none());
 }
 
 #[test]
@@ -427,35 +368,10 @@ fn rust_lux_roadmap_issue_register_rejects_invalid_repo_without_local_fallback()
 }
 
 #[test]
-fn rust_lux_godot_build_exits_non_zero_until_verified() {
-    let temp_dir = create_temp_dir("lux-godot-build");
-    let project_root = temp_dir.join("GodotProject");
-    fs::create_dir_all(&project_root).expect("create Godot project");
-    fs::write(project_root.join("project.godot"), "config_version=5\n")
-        .expect("write project.godot");
+fn rust_lux_bridge_install_rejects_removed_godot_type() {
+    let project_root = create_temp_dir("lux-removed-godot-bridge");
 
     let output = Command::new(env!("CARGO_BIN_EXE_lux"))
-        .args([
-            "godot",
-            "build",
-            "--project-path",
-            project_root.to_str().expect("project path UTF-8"),
-        ])
-        .output()
-        .expect("run lux godot build");
-
-    assert!(!output.status.success());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("not supported until GoPeak-backed build"));
-}
-
-#[test]
-fn rust_lux_bridge_install_godot_requires_valid_project_and_is_idempotent() {
-    let temp_dir = create_temp_dir("lux-godot-bridge");
-    let project_root = temp_dir.join("GodotProject");
-    fs::create_dir_all(&project_root).expect("create Godot project");
-
-    let invalid = Command::new(env!("CARGO_BIN_EXE_lux"))
         .args([
             "bridge",
             "install",
@@ -465,33 +381,12 @@ fn rust_lux_bridge_install_godot_requires_valid_project_and_is_idempotent() {
             "godot",
         ])
         .output()
-        .expect("run invalid lux bridge install --type godot");
-    assert!(!invalid.status.success());
+        .expect("run lux bridge install --type godot");
 
-    fs::write(project_root.join("project.godot"), "config_version=5\n")
-        .expect("write project.godot");
-
-    for _ in 0..2 {
-        let output = Command::new(env!("CARGO_BIN_EXE_lux"))
-            .args([
-                "bridge",
-                "install",
-                "--project-path",
-                project_root.to_str().expect("project path UTF-8"),
-                "--type",
-                "godot",
-            ])
-            .output()
-            .expect("run lux bridge install --type godot");
-        assert_command_success(&output, "lux bridge install --type godot");
-    }
-
-    let plugin_cfg = fs::read_to_string(project_root.join("addons/lux_bridge/plugin.cfg"))
-        .expect("read plugin.cfg");
-    let bridge_gd =
-        fs::read_to_string(project_root.join("addons/lux_bridge/bridge.gd")).expect("read bridge");
-    assert!(plugin_cfg.contains("Lux Bridge"));
-    assert!(bridge_gd.contains("connect_to_host(\"127.0.0.1\", 17342)"));
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unsupported bridge type 'godot'") || stderr.contains("invalid"));
+    assert!(!project_root.join("addons/lux_bridge/plugin.cfg").exists());
 }
 
 #[test]
@@ -577,10 +472,10 @@ fn rust_lux_init_writes_engine_capabilities_snapshot() {
     )
     .expect("parse capabilities snapshot");
     let engines = snapshot["engines"].as_array().expect("engines array");
-    assert_eq!(engines.len(), 3);
+    assert_eq!(engines.len(), 1);
     assert!(engines.iter().any(|engine| engine["engine"] == "unity"));
-    assert!(engines.iter().any(|engine| engine["engine"] == "godot"));
-    assert!(engines.iter().any(|engine| engine["engine"] == "three_js"));
+    assert!(snapshot.get("godot").is_none());
+    assert!(snapshot.get("three_js").is_none());
 }
 
 #[test]
@@ -928,7 +823,7 @@ fn game_harness_no_engine_blocks() {
     assert_eq!(result.evidence_paths.len(), 1);
     let evidence_path = project_root.join(&result.evidence_paths[0]);
     let evidence = fs::read_to_string(&evidence_path).expect("blocker evidence should read");
-    assert!(evidence.contains("missing CLI"));
+    assert!(evidence.contains("Unsupported verification_policy: godot_cli"));
     assert!(evidence.contains("\"policy\":\"godot_cli\""));
     assert!(FileTicketStore::new(&project_root)
         .list(Default::default())
@@ -1001,14 +896,17 @@ fn rust_lux_bridge_install_copies_unity_bridge_to_luxbridge_layout() {
     let project_root = temp_dir.join("Project");
     let fake_bin = temp_dir.join("bin");
     let fake_npm = fake_bin.join("npm");
+    let npm_args_log = temp_dir.join("npm-args.log");
     fs::create_dir_all(project_root.join("Assets")).expect("create Assets");
     fs::create_dir_all(&fake_bin).expect("create fake bin");
     fs::write(
         &fake_npm,
-        "#!/bin/sh\nif [ \"$1\" = \"list\" ]; then printf '{\"dependencies\":{\"uloop-cli\":{\"version\":\"0.0.0-test\"}}}\\n'; exit 0; fi\nexit 0\n",
+        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$NPM_ARGS_LOG\"\nif [ \"$1\" = \"list\" ]; then printf '{\"dependencies\":{\"uloop-cli\":{\"version\":\"0.0.0-test\"}}}\\n'; exit 0; fi\nexit 0\n",
     )
     .expect("write fake npm");
     make_executable(&fake_npm);
+    let fake_dll = project_root.join("fake-lux-bridge.dll");
+    fs::write(&fake_dll, b"fake bridge dll").expect("write fake bridge dll");
 
     for _ in 0..2 {
         let output = Command::new(env!("CARGO_BIN_EXE_lux"))
@@ -1028,17 +926,39 @@ fn rust_lux_bridge_install_copies_unity_bridge_to_luxbridge_layout() {
                     std::env::var("PATH").expect("PATH")
                 ),
             )
+            .env("LUX_BRIDGE_PRECOMPILED_DLL", &fake_dll)
+            .env("NPM_ARGS_LOG", &npm_args_log)
             .output()
             .expect("run lux bridge install --type unity");
         assert_command_success(&output, "lux bridge install --type unity");
     }
 
     assert!(project_root
-        .join("Assets/Editor/LuxBridge/UnityAiBridge.cs")
+        .join("Assets/Editor/LuxBridge/Linalab.UnityAiBridge.Editor.dll")
         .is_file());
     assert!(project_root
-        .join("Assets/Editor/LuxBridge/LuxBridgeSettings.cs")
+        .join("Assets/Editor/LuxBridge/Linalab.UnityAiBridge.Editor.dll.meta")
         .is_file());
+    assert!(
+        !project_root
+            .join("Assets/Editor/LuxBridge/UnityAiBridge.cs")
+            .exists(),
+        "bridge install must not expose C# source files in the target project"
+    );
+    let npm_args = fs::read_to_string(&npm_args_log).expect("read fake npm args");
+    assert!(
+        npm_args.contains("install uloop-cli --save-dev"),
+        "bridge install should install uloop-cli locally, got:\n{npm_args}"
+    );
+    assert!(
+        !npm_args.contains("-g"),
+        "bridge install must not install uloop-cli globally, got:\n{npm_args}"
+    );
+    let package_json: Value = serde_json::from_str(
+        &fs::read_to_string(project_root.join("package.json")).expect("read package.json"),
+    )
+    .expect("package.json should parse");
+    assert_eq!(package_json["private"], true);
     assert!(
         !project_root
             .join(".opencode/plugins/lux-plugin.ts")
@@ -1060,8 +980,8 @@ fn doctor_reports_luxbridge_install_path() {
     fs::create_dir_all(current_project.join("Assets/Editor/LuxBridge"))
         .expect("create current LuxBridge dir");
     fs::write(
-        current_project.join("Assets/Editor/LuxBridge/UnityAiBridge.cs"),
-        "// Lux bridge marker\n",
+        current_project.join("Assets/Editor/LuxBridge/Linalab.UnityAiBridge.Editor.dll"),
+        b"fake bridge dll",
     )
     .expect("write current LuxBridge marker");
 
@@ -2328,12 +2248,14 @@ fn rust_lux_unity_get_hierarchy_falls_back_to_scene_ast() {
             .expect("write rejected response");
 
         let (mut fallback_stream, _) = listener.accept().expect("accept fallback client");
-        let mut fallback_reader = BufReader::new(fallback_stream.try_clone().expect("clone fallback stream"));
+        let mut fallback_reader =
+            BufReader::new(fallback_stream.try_clone().expect("clone fallback stream"));
         let mut fallback_line = String::new();
         fallback_reader
             .read_line(&mut fallback_line)
             .expect("read fallback request line");
-        let fallback: Value = serde_json::from_str(fallback_line.trim()).expect("fallback request JSON");
+        let fallback: Value =
+            serde_json::from_str(fallback_line.trim()).expect("fallback request JSON");
         assert_eq!(fallback["command"], "get_scene_ast");
         assert_eq!(fallback["token"], TOKEN);
         assert_eq!(fallback["params"]["astRootOnly"], false);
@@ -3426,12 +3348,10 @@ fn rust_lux_unity_context_refresh_uses_open_bridge_when_available() {
     let context: Value = serde_json::from_slice(&output.stdout).expect("context JSON");
     assert_eq!(context["protocol"], "lux.unity.context.v1");
     assert_eq!(context["source"], "get_selected_file_context");
-    assert!(
-        context["selected_file_context"]["projectName"]
-            .as_str()
-            .expect("projectName string")
-            .starts_with("LiveProjectあいうえお漢字かなカナポイ活さがそうキノコのコ")
-    );
+    assert!(context["selected_file_context"]["projectName"]
+        .as_str()
+        .expect("projectName string")
+        .starts_with("LiveProjectあいうえお漢字かなカナポイ活さがそうキノコのコ"));
 
     server.join().expect("join fake Unity TCP server");
 }
@@ -5126,6 +5046,334 @@ fn mcp_stdio_initializes_and_lists_bridge_and_game_dev_tools_without_unity() {
         assert_eq!(tool["inputSchema"]["type"], "object");
         assert_eq!(tool["inputSchema"]["additionalProperties"], false);
     }
+}
+
+#[test]
+fn mcp_stdio_exposes_lazycodex_native_unity_mcp_contract() {
+    let project = create_test_unity_project("lux-mcp-lazycodex-unity", false);
+    let responses = run_mcp_jsonl(
+        &project,
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}),
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}),
+            json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"lux_unity_mcp_contract","arguments":{}}}),
+        ],
+    );
+
+    assert_eq!(responses.len(), 3);
+    assert_eq!(responses[0]["result"]["serverInfo"]["name"], "lux");
+
+    let tools = responses[1]["result"]["tools"]
+        .as_array()
+        .expect("tools array");
+    let tool_names = tools
+        .iter()
+        .map(|tool| tool["name"].as_str().expect("tool name"))
+        .collect::<std::collections::HashSet<_>>();
+    for expected in [
+        "lux_bridge_install",
+        "lux_bridge_diagnostics",
+        "lux_game_spec_write",
+        "lux_game_ticket_prepare",
+        "lux_unity_maneuver",
+        "lux_game_dev_loop_once",
+        "lux_unity_mcp_contract",
+    ] {
+        assert!(tool_names.contains(expected), "missing MCP tool {expected}");
+    }
+    assert!(
+        !tool_names.contains("lux_capability_packages"),
+        "LazyCodex-native Unity MCP discovery must not expose the broad cross-engine package registry as a primary tool"
+    );
+
+    let contract_result = &responses[2]["result"];
+    assert_eq!(contract_result["isError"], false);
+    let contract = &contract_result["structuredContent"];
+    assert_eq!(contract["ok"], true);
+    assert_eq!(contract["protocol"], "lux.lazycodex_unity_mcp.v1");
+    assert_eq!(contract["engine"], "unity");
+    assert_eq!(contract["maturity"], "verified");
+    assert_eq!(contract["lazycodexNative"], true);
+    assert_eq!(contract["primaryServer"]["name"], "lux");
+    assert_eq!(contract["primaryServer"]["transport"], "stdio");
+    assert!(contract["primaryServer"]["args"]
+        .as_array()
+        .expect("primary server args")
+        .iter()
+        .any(|arg| arg.as_str() == Some("mcp")));
+    assert!(contract["tools"]
+        .as_array()
+        .expect("contract tools")
+        .iter()
+        .any(|tool| tool["name"] == "lux_bridge_diagnostics"
+            && tool["unavailableState"]["stopReason"] == "unity_bridge_unavailable"));
+    assert!(
+        contract.get("packages").is_none(),
+        "Unity MCP contract must not return a broad package registry"
+    );
+    assert!(
+        contract.get("engines").is_none(),
+        "Unity MCP contract must not advertise cross-engine discovery as the primary output"
+    );
+}
+
+#[test]
+fn mcp_stdio_lists_unity_contract_and_unity_uloop_tool() {
+    let project = create_test_unity_project("lux-mcp-lazy-unity-contract", false);
+    let responses = run_mcp_jsonl(
+        &project,
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}),
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"lux_unity_mcp_contract","arguments":{}}}),
+        ],
+    );
+
+    assert_eq!(responses.len(), 2);
+    let tools = responses[0]["result"]["tools"]
+        .as_array()
+        .expect("tools array");
+    let tool_names = tools
+        .iter()
+        .map(|tool| tool["name"].as_str().expect("tool name"))
+        .collect::<std::collections::HashSet<_>>();
+    assert!(tool_names.contains("lux_unity_mcp_contract"));
+    assert!(!tool_names.contains("lux_capability_packages"));
+    assert!(tool_names.contains("lux_unity_uloop"));
+
+    let contract_result = &responses[1]["result"];
+    assert_eq!(contract_result["isError"], false);
+    let discovery = &contract_result["structuredContent"];
+    assert_eq!(discovery["ok"], true);
+    assert_eq!(discovery["protocol"], "lux.lazycodex_unity_mcp.v1");
+    assert_eq!(discovery["engine"], "unity");
+    assert_eq!(discovery["maturity"], "verified");
+    assert_eq!(
+        discovery["lazycodex"]["integrationSource"],
+        "lux_mcp_projection"
+    );
+    assert_eq!(discovery["lazycodex"]["externalSourceModified"], false);
+    assert!(discovery["unity"]["tools"]
+        .as_array()
+        .expect("Unity tool projection")
+        .iter()
+        .any(|tool| tool["name"] == "lux_unity_uloop"));
+    assert!(discovery.get("packages").is_none());
+    assert!(discovery.get("godot").is_none());
+    assert!(discovery.get("three_js").is_none());
+}
+
+#[test]
+fn mcp_stdio_tool_schemas_are_narrow_for_unity_tools() {
+    let project = create_test_unity_project("lux-mcp-narrow-unity-schemas", false);
+    let responses = run_mcp_jsonl(
+        &project,
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}),
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"lux_unity_mcp_contract","arguments":{}}}),
+        ],
+    );
+
+    assert_eq!(responses.len(), 2);
+    let tools = responses[0]["result"]["tools"]
+        .as_array()
+        .expect("tools array");
+    let tool_by_name = tools
+        .iter()
+        .map(|tool| (tool["name"].as_str().expect("tool name"), tool))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    let uloop_schema = &tool_by_name
+        .get("lux_unity_uloop")
+        .expect("Unity uloop tool")["inputSchema"]["properties"];
+    assert!(
+        uloop_schema.get("uloop_command").is_some(),
+        "Unity uloop tool must accept uloop_command"
+    );
+    assert!(
+        uloop_schema.get("args").is_some(),
+        "Unity uloop tool must accept args"
+    );
+
+    for non_uloop_tool in [
+        "lux_unity_mcp_contract",
+        "lux_bridge_install",
+        "lux_bridge_diagnostics",
+        "lux_game_spec_write",
+        "lux_game_ticket_prepare",
+        "lux_unity_maneuver",
+        "lux_game_dev_loop_once",
+    ] {
+        let properties = &tool_by_name
+            .get(non_uloop_tool)
+            .unwrap_or_else(|| panic!("missing MCP tool {non_uloop_tool}"))["inputSchema"]
+            ["properties"];
+        assert!(
+            properties.get("uloop_command").is_none(),
+            "{non_uloop_tool} must not inherit Unity uloop_command schema"
+        );
+        assert!(
+            properties.get("args").is_none(),
+            "{non_uloop_tool} must not inherit Unity args schema"
+        );
+    }
+
+    let discovery = &responses[1]["result"]["structuredContent"];
+    assert_eq!(discovery["ok"], true);
+    assert_eq!(discovery["protocol"], "lux.lazycodex_unity_mcp.v1");
+    assert_eq!(
+        discovery["lazycodex"]["integrationSource"],
+        "lux_mcp_projection"
+    );
+    assert_eq!(discovery["lazycodex"]["externalSourceModified"], false);
+    assert_eq!(discovery["primaryEngine"], "unity");
+    assert_eq!(discovery["unity"]["maturity"], "verified");
+    assert!(discovery["unity"]["tools"]
+        .as_array()
+        .expect("Unity tool projection")
+        .iter()
+        .any(|tool| tool["name"] == "lux_unity_uloop"));
+    assert!(
+        discovery.get("packages").is_none(),
+        "LazyCodex discovery must not expose Godot/Three.js package metadata as the primary output"
+    );
+    assert!(
+        discovery.get("godot").is_none(),
+        "Godot metadata must not be part of the primary LazyCodex Unity projection"
+    );
+    assert!(
+        discovery.get("three_js").is_none(),
+        "Three.js metadata must not be part of the primary LazyCodex Unity projection"
+    );
+}
+
+#[test]
+fn mcp_stdio_selection_context_registers_and_reads_latest() {
+    let project = create_test_unity_project("lux-mcp-selection-context", false);
+    let payload_internal_target = project.join("payload-controlled/selection-context.json");
+    let context = json!({
+        "schemaVersion": 1,
+        "summary": "Player selected in active Unity scene",
+        "selection": {
+            "gameObjectName": "Player",
+            "hierarchyPath": "SampleScene/Player"
+        },
+        "scenePath": payload_internal_target,
+        "assetPath": project.join("payload-controlled/asset-context.json"),
+        "prefabPath": project.join("payload-controlled/prefab-context.json"),
+        "path": project.join("payload-controlled/generic-context.json")
+    });
+
+    let responses = run_mcp_jsonl(
+        &project,
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}),
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}),
+            json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"lux_unity_selection_context_latest","arguments":{}}}),
+            json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"lux_unity_selection_context_register","arguments":{"context":context.clone()}}}),
+            json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"lux_unity_selection_context_latest","arguments":{}}}),
+            json!({"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"lux_unity_selection_context_latest","arguments":{}}}),
+            json!({"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"lux_unity_selection_context_register","arguments":{"context":{"schemaVersion":1,"summary":""}}}}),
+        ],
+    );
+
+    assert_eq!(responses.len(), 7);
+    assert_eq!(responses[0]["result"]["serverInfo"]["name"], "lux");
+
+    let tools = responses[1]["result"]["tools"]
+        .as_array()
+        .expect("tools array");
+    let tool_names = tools
+        .iter()
+        .map(|tool| tool["name"].as_str().expect("tool name"))
+        .collect::<std::collections::HashSet<_>>();
+    assert!(tool_names.contains("lux_unity_selection_context_register"));
+    assert!(tool_names.contains("lux_unity_selection_context_latest"));
+
+    let missing_latest = &responses[2]["result"];
+    assert_eq!(missing_latest["isError"], true);
+    assert_eq!(
+        missing_latest["structuredContent"]["stopReason"],
+        "unity_selection_context_missing"
+    );
+    assert!(missing_latest["structuredContent"]["message"]
+        .as_str()
+        .expect("missing latest message")
+        .contains("Latest Unity selection context is missing"));
+
+    let latest_path = project.join(".lux/context/selection-context.json");
+    let events_path = project.join(".lux/context/selection-context-events.jsonl");
+    let registered = &responses[3]["result"];
+    assert_eq!(registered["isError"], false);
+    let registered_content = &registered["structuredContent"];
+    assert_eq!(registered_content["ok"], true);
+    assert_eq!(registered_content["context"], context);
+    assert_eq!(registered_content["latestContextPath"], json!(latest_path));
+    assert_eq!(registered_content["eventsPath"], json!(events_path));
+
+    for latest_response in [&responses[4], &responses[5]] {
+        let latest_result = &latest_response["result"];
+        assert_eq!(latest_result["isError"], false);
+        let latest_content = &latest_result["structuredContent"];
+        assert_eq!(latest_content["ok"], true);
+        assert_eq!(latest_content["context"], context);
+        assert_eq!(latest_content["latestContextPath"], json!(latest_path));
+        assert_eq!(latest_content["eventsPath"], json!(events_path));
+    }
+
+    let malformed = &responses[6]["result"];
+    assert_eq!(malformed["isError"], true);
+    assert!(malformed["structuredContent"]["message"]
+        .as_str()
+        .expect("malformed context message")
+        .contains("context.summary must be a non-empty string"));
+
+    let latest: Value =
+        serde_json::from_str(&fs::read_to_string(&latest_path).expect("latest context file"))
+            .expect("latest context JSON");
+    assert_eq!(latest, context);
+    let events_text = fs::read_to_string(&events_path).expect("selection context events");
+    let events = events_text.lines().collect::<Vec<_>>();
+    assert_eq!(events.len(), 1);
+    let event: Value = serde_json::from_str(events[0]).expect("selection context event JSON");
+    assert_eq!(event["eventType"], "unity.selection_context_registered");
+    assert_eq!(event["latestContextPath"], json!(latest_path));
+
+    assert!(!project.join(".lux/selection-context.json").exists());
+    assert!(!project.join(".lux/selection-context-events.jsonl").exists());
+    assert!(!project.join("payload-controlled").exists());
+}
+
+#[test]
+fn mcp_stdio_selection_context_rejects_relative_project_path() {
+    let project = create_test_unity_project("lux-mcp-selection-context-default", false);
+    let outside = create_test_unity_project("lux-mcp-selection-context-outside", false);
+    let context = json!({
+        "schemaVersion": 1,
+        "summary": "Relative project path should not be accepted"
+    });
+
+    let responses = run_mcp_jsonl(
+        &project,
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"lux_unity_selection_context_register","arguments":{"project_path":"../lux-mcp-selection-context-outside","context":context}}}),
+        ],
+    );
+
+    assert_eq!(responses.len(), 1);
+    let result = &responses[0]["result"];
+    assert_eq!(result["isError"], true);
+    assert!(result["structuredContent"]["message"]
+        .as_str()
+        .expect("relative project_path message")
+        .contains("project_path must be an absolute project root"));
+    assert!(!project.join(".lux/context/selection-context.json").exists());
+    assert!(!project
+        .join(".lux/context/selection-context-events.jsonl")
+        .exists());
+    assert!(!outside.join(".lux/context/selection-context.json").exists());
+    assert!(!outside
+        .join(".lux/context/selection-context-events.jsonl")
+        .exists());
 }
 
 #[test]

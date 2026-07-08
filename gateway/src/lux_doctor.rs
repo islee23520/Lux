@@ -357,7 +357,7 @@ fn check_bridge(project_path: &Path, is_unity_project: bool, enabled: bool) -> D
         .join("Assets")
         .join("Editor")
         .join("LuxBridge")
-        .join("UnityAiBridge.cs");
+        .join("Linalab.UnityAiBridge.Editor.dll");
     if bridge_file.is_file() {
         check(
             "bridge",

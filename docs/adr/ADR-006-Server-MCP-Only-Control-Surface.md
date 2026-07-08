@@ -10,11 +10,11 @@ roots. Those surfaces conflicted with the current repository shape and with the
 project invariant that `gateway/` owns the executable control plane while
 runtime truth stays under `.lux/`.
 
-The current product direction is not "no UI in target games" and not "Unity
-only". Lux is a local-first automation and evidence loop for game projects:
-Unity is the primary verified engine path, while Godot and Three.js remain
-capability-tiered. Server/MCP-only describes the Lux control surface, not the
-target engine capability model.
+The current product direction is not "no UI in target games". Lux is a
+local-first automation and evidence loop for Unity game projects. Unity is the
+only active verified engine path, and Ouroforge is the next product priority
+after Unity. Server/MCP-only describes the Lux control surface, not a standalone
+application surface.
 
 ## Decision
 Lux will expose its control surface through non-interactive local automation

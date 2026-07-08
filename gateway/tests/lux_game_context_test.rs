@@ -92,15 +92,15 @@ fn h15_context_schema_serializes_required_fields_and_sources() {
 }
 
 #[test]
-fn h15_unsupported_engine_context_records_capability_blocker() {
+fn h15_unity_context_blocker_records_capability_blocker() {
     let observation = unsupported_engine_context_blocker(
-        GameContextEngine::Godot,
+        GameContextEngine::Unity,
         GameContextRefs {
             spec_ref: ".lux/specs/spec.json".to_string(),
-            ticket_ref: Some(".lux/tickets/T-GODOT.json".to_string()),
-            run_evidence_ref: ".lux/evidence/runs/h15/godot-context.json".to_string(),
+            ticket_ref: Some(".lux/tickets/T-UNITY.json".to_string()),
+            run_evidence_ref: ".lux/evidence/runs/h15/unity-context.json".to_string(),
         },
-        "Godot context adapter does not yet expose scene/object observations",
+        "Unity context adapter did not expose scene/object observations",
     );
 
     assert_eq!(
@@ -110,7 +110,7 @@ fn h15_unsupported_engine_context_records_capability_blocker() {
     assert_eq!(observation.capability_blockers.len(), 1);
     assert_eq!(
         observation.capability_blockers[0].evidence_ref,
-        ".lux/evidence/runs/h15/godot-context.json"
+        ".lux/evidence/runs/h15/unity-context.json"
     );
     assert!(observation.scene_hierarchy.is_empty());
 }
@@ -168,7 +168,7 @@ fn h15_malformed_context_schema_rejects_unknown_fields() {
 #[test]
 fn h15_prompt_injection_in_logs_and_blockers_remains_data() {
     let observation = unsupported_engine_context_blocker(
-        GameContextEngine::ThreeJs,
+        GameContextEngine::Unity,
         GameContextRefs {
             spec_ref: ".lux/specs/spec.json".to_string(),
             ticket_ref: Some(".lux/tickets/T-INJECTION.json".to_string()),
@@ -195,13 +195,13 @@ fn h15_prompt_injection_in_logs_and_blockers_remains_data() {
 #[test]
 fn h15_stale_non_lux_refs_do_not_satisfy_ssot_provenance() {
     let observation = unsupported_engine_context_blocker(
-        GameContextEngine::Godot,
+        GameContextEngine::Unity,
         GameContextRefs {
             spec_ref: "docs/spec.json".to_string(),
-            ticket_ref: Some("tickets/T-GODOT.json".to_string()),
+            ticket_ref: Some("tickets/T-UNITY.json".to_string()),
             run_evidence_ref: "tmp/context.json".to_string(),
         },
-        "Godot context adapter is unsupported",
+        "Unity context evidence is missing",
     );
 
     assert!(!observation.refs_are_lux_ssot());

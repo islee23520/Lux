@@ -4,10 +4,9 @@ This document is a reference-oriented usage guide for LUX. It focuses on concret
 
 Key references:
 
-- Godot capability details: `docs/godot-support.md`
 - Architectural decisions: `docs/adr/`
 
-LUX is a local-first server/MCP evidence-gated automation control plane for game projects. Durable project state is owned under `.lux/`.
+LUX is a local-first server/MCP evidence-gated automation control plane for Unity game projects. Durable project state is owned under `.lux/`. The next product priority after Unity is Ouroforge, but this repository does not yet expose an Ouroforge runtime surface.
 
 The repository is layered: `.lux/` owns runtime evidence and state, `gateway/` owns the Rust control plane, `bridge/` owns the engine adapter source, and `Skills/skills/` owns the bundled workflow docs. The docs below are a repository docs projection of that split without claiming autonomous verification is complete unless the supporting evidence exists.
 
@@ -18,9 +17,6 @@ Within `.lux/`, game design truth is split by domain. `.lux/specs/` is the GDD a
 Minimal flow, install LUX, install the bridge, initialize `.lux/`, start the server.
 
 ```bash
-# 0) Fresh clone: initialize the bridge submodule
-git submodule update --init bridge
-
 # 1) Install the LUX CLI
 cargo install --path gateway
 
@@ -53,7 +49,6 @@ lux
   install
   serve
   unity
-  godot
   spec
   roadmap
   kanban
@@ -89,13 +84,7 @@ lux
 | --- | --- |
 | `lux init` | Initialize `.lux/` state for the current project directory. |
 | `lux install` | Install LUX-managed assets needed by the project workflow. |
-| `lux bridge install --project-path <path>` | Install the engine bridge into a project. |
-
-Bridge install for Godot must use `--type godot`:
-
-```bash
-lux bridge install --project-path /path/to/godot-project --type godot
-```
+| `lux bridge install --project-path <path>` | Install the Unity bridge into a project. |
 
 ### Server
 
@@ -150,17 +139,6 @@ Notes:
 
 - `lux unity build`, `lux unity play`, `lux unity compile`, `lux unity bridge`, `lux unity run-tests` are Unity-scoped commands and are distinct from legacy top-level wrappers.
 - `lux unity backend-list-commands` exists to surface backend command availability.
-
-### Godot Commands
-
-Godot is exposed as a top-level category with explicit capability status.
-
-| Command | Status | Notes |
-| --- | --- | --- |
-| `lux godot status --project-path <path>` | verified | Detects Godot 4.x projects and reports capability fields. |
-| `lux godot build --project-path <path>` | unsupported | Intentionally exits non-zero until GoPeak-backed verification exists. |
-
-See `docs/godot-support.md`.
 
 ### Spec and Planning
 
@@ -319,7 +297,7 @@ Run `lux mcp install --project-path /path/to/project` after `lux init` and bridg
 - Summary fields include ambiguity, decisions, capabilities, next goal, and evidence status. Each field is a projection from `.lux/` state or a supported gateway endpoint.
 - Context-first game workflows use the Game Context Adapter contract: scene hierarchy, selected object identity, components/properties, Transform/RectTransform/Collider values, camera/UI coordinates, console/compile logs, PlayMode/input traces, screenshot refs, and optional vision annotations link back to `.lux/specs`, tickets, run evidence, and engine capability status.
 - Screenshots and vision annotations are supporting evidence only; if an engine cannot provide required text/JSON observations, the adapter records an explicit capability blocker.
-- Engine support uses capability routing rather than equal verification maturity: Godot remains partial and Three.js remains planned unless a supported verification surface proves otherwise.
+- Engine support is Unity-first. Godot and Three.js are removed from active CLI, bridge, roadmap, and capability surfaces.
 - Remote/WebRTC stays hidden experimental and out of the public verification path.
 
 ### Legacy top-level commands (deprecated)
@@ -615,7 +593,7 @@ Game-harness orchestration events are emitted as evidence-gated runtime events. 
 | `game_harness.iteration.started` | A run iteration began, usually after ambiguity, decision, or engine capability review. |
 | `game_harness.iteration.completed` | A run iteration ended after updating evidence status, next goal, or blocker state. |
 
-Engine support for these events is adapter-dependent. Unity has the most mature verified surface; Godot and Three.js remain capability-routed and must record blockers for unsupported observations or commands.
+Engine support for these events is Unity-first. Unsupported observations must record blockers instead of fake engine parity.
 
 Subscription model:
 
@@ -772,39 +750,13 @@ Experimental flags are visible via:
 
 ## 11. Engine Support
 
-Support status is intentionally explicit so clients do not assume planned features work.
-
-Capability routing is per engine and per command. A verified Unity command, a partial Godot command, and a planned Three.js command do not have equal verification maturity.
+Support status is intentionally explicit so clients do not assume removed or planned features work.
 
 | Engine | Support status | Notes |
 | --- | --- | --- |
 | Unity | verified | Primary public-beta verified engine. |
-| Godot | partial | Detection and bridge install pass; build is unsupported. See `docs/godot-support.md`. |
-| Three.js | planned | Runtime harness is absent in this repo snapshot. |
 
 ## 12. Troubleshooting
-
-### Godot bridge install fails
-
-Requirements from `docs/godot-support.md`:
-
-- Project must be Godot 4.x.
-- `project.godot` must contain `config_version=5`.
-- There is no force bypass for Godot bridge validation.
-
-Use:
-
-```bash
-lux bridge install --project-path /path/to/godot-project --type godot
-```
-
-### `lux godot build` exits non-zero
-
-This is expected. The command is intentionally unsupported until GoPeak-backed build has automated verification.
-
-```bash
-lux godot build --project-path /path/to/godot-project
-```
 
 ### Conflicting assumptions about run state
 

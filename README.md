@@ -6,9 +6,9 @@ This English README is the base version. Keep `README.ko.md` as the Korean trans
 
 **LUX** = **L**inalab **U**nity **X**
 
-LUX is a local-first server/MCP evidence-gated automation control plane for game projects. It connects AI coding tools to engine projects through installed bridge adapters, records runtime truth under `.lux/`, and exposes verified project state through CLI, HTTP/WebSocket, and MCP surfaces.
+LUX is a local-first server/MCP evidence-gated automation control plane for Unity game projects. It connects AI coding tools to Unity through an installed bridge adapter, records runtime truth under `.lux/`, and exposes verified project state through CLI, HTTP/WebSocket, and MCP surfaces.
 
-Unity is the primary public-beta verified engine path. Godot and Three.js support must stay inside explicit capability tiers so planned, partial, or adapter-only behavior is not presented as completed product behavior.
+Unity is the only active public-beta engine path. The next product priority after Unity is Ouroforge integration, but this repository does not yet expose an Ouroforge runtime surface.
 
 ## What LUX Is
 
@@ -18,7 +18,7 @@ The core problem is that AI coding tools understand source files but usually can
 
 The basic flow is:
 
-1. Install an engine bridge adapter into the target project.
+1. Install the Unity bridge adapter into the target project.
 2. Run the Rust gateway locally.
 3. Let AI tools use CLI, HTTP/WebSocket, or MCP commands.
 4. Record runtime truth and evidence under `.lux/`.
@@ -29,7 +29,7 @@ The basic flow is:
 LUX moves in a fixed loop: capture local truth, decide from evidence, act through the gateway, verify through the engine or `.lux/`, then write the result back as durable context. The loop is intentionally slower than a direct code edit because it keeps AI agents from claiming progress from stale assumptions.
 
 1. **Observe** - read `.lux/`, project files, engine capability state, Unity bridge status, logs, scene hierarchy, screenshots, and recent run evidence.
-2. **Route** - choose the verified surface for the engine and task. Unity can use the full bridge-backed path; Godot and Three.js must stay inside their declared maturity tier.
+2. **Route** - choose the verified Unity surface for the task.
 3. **Act** - run CLI, HTTP/WebSocket, MCP, or bridge commands through the Rust gateway instead of mutating runtime state from side channels.
 4. **Verify** - capture compile/test/run/status evidence before presenting behavior as done.
 5. **Project** - expose the proven state back through README, `docs/`, skills, CLI output, and `.lux/` summaries without turning planned capabilities into completed claims.
@@ -43,7 +43,7 @@ This rhythm makes LUX a local-first control plane, not a GUI product, remote str
 | `.lux/` | Runtime truth | Specs, capability status, tickets, events, roadmap, sessions, run evidence | Duplicated cache truth or hand-maintained docs-only state |
 | `gateway/` | Control-plane runtime | Rust CLI, Axum HTTP/WS server, MCP tools, endpoint routing, engine command orchestration | Unity Editor windows, dashboards, frontend apps |
 | `crates/` | Shared Rust packages | Reusable core logic split out of gateway responsibilities | Server wiring that belongs in `gateway/` |
-| `bridge/` | In-repository engine bridge source | Unity C# bridge package, Godot adapter files, Three.js adapter sources that `lux bridge install` can copy into target projects | Git submodules, external bridge repositories, target Unity project state, vendored dependency directories |
+| `bridge/` | In-repository engine bridge source | Unity C# bridge package that `lux bridge install` can copy into target projects | Git submodules, external bridge repositories, target Unity project state, vendored dependency directories |
 | `Skills/` | Agent workflow library | Manifest-backed skills, references, catalogs, and templates projected into target projects | Claims that a workflow is engine-verified without matching gateway/bridge evidence |
 | `docs/` | Human-readable projection | Usage, ADRs, support tiers, roadmap explanation, and design constraints | The canonical runtime state when `.lux/` disagrees |
 | `scripts/` | Local verification and maintenance | Structure checks, policy scans, smoke scripts, release/test helpers | Long-running product surfaces or hidden runtime state |
@@ -52,24 +52,20 @@ Bridge sources are ordinary files in this repository. Do not initialize `bridge/
 
 ## Engine Capability Snapshot
 
-Engine support uses capability routing, not equal verification maturity. Unity is the primary verified path. Godot and Three.js entries expose only the commands and evidence levels that are actually supported.
+Engine support is Unity-first. Godot and Three.js adapters, CLI commands, roadmap projections, and capability records are not active LUX surfaces.
 
 | Engine | Public maturity | Notes |
 | --- | --- | --- |
 | Unity | verified | Primary public-beta path for bridge, status, compile/test/run evidence. |
-| Godot | partial | Detection, bridge install, status, and workflow skill projection only; build/run/test stay unsupported. |
-| Three.js | planned | Adapter files may exist, but Three.js remains planned unless a runtime harness is present and verified. |
 
-| Capability | Unity | Three.js | Godot |
-| --- | --- | --- | --- |
-| Project detection | verified | planned | verified |
-| `.lux` workspace | verified | planned | planned |
-| Bridge install | verified | planned | verified via `--type godot` |
-| Status | verified | planned | verified with separated `gopeak.*` and `lux.*` fields |
-| Build/run/test | verified for Unity paths | planned | unsupported until GoPeak-backed verification exists |
-| `.agents` workflow skill | verified | planned | verified via `lux-godot` |
-
-See [`docs/godot-support.md`](docs/godot-support.md) for Godot-specific capability status.
+| Capability | Unity |
+| --- | --- |
+| Project detection | verified |
+| `.lux` workspace | verified |
+| Bridge install | verified |
+| Status | verified |
+| Build/run/test | verified for Unity paths |
+| `.agents` workflow skill | verified |
 
 ## Architecture
 
@@ -215,7 +211,7 @@ Game intent and domain decisions live under `.lux/specs/`. README files and `doc
 | `narrative` | Story and dialogue |
 | `ui-ux` | UI/UX specification |
 | `technical-architecture` | System architecture |
-| `engine` | Unity/Godot/Three.js capability routing |
+| `engine` | Unity capability routing |
 | `testing` | Automated and manual QA strategy |
 | `build-release` | Build, release, deployment |
 
@@ -229,9 +225,7 @@ Lux/
 │   │   ├── server.rs               # Axum router
 │   │   ├── protocol.rs             # Event envelope and bridge protocol
 │   │   ├── project.rs              # Unity project detection
-│   │   ├── project_godot.rs        # Godot project detection
 │   │   ├── bridge_types.rs         # Bridge type definitions
-│   │   ├── godot_bridge_install.rs # Godot bridge install path
 │   │   ├── lux_*.rs                # Lux core modules
 │   │   ├── uloop_*.rs              # Unity CLI passthrough
 │   │   ├── skill_adapter/          # Skill loading and adaptation
@@ -240,10 +234,8 @@ Lux/
 │   └── Cargo.toml
 │
 ├── crates/                         # Shared Rust core packages
-├── bridge/                         # Engine bridge adapters, in-repo source
-│   ├── unity/                      # Unity C# bridge
-│   ├── godot/                      # Godot bridge
-│   └── threejs/                    # Three.js adapter files
+├── bridge/                         # Unity bridge adapter, in-repo source
+│   └── unity/                      # Unity C# bridge
 ├── Skills/                         # Skill source tree
 ├── docs/                           # Human-readable docs and ADRs
 ├── scripts/                        # Verification and maintenance scripts

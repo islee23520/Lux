@@ -73,8 +73,8 @@ namespace Linalab.Lux.Editor
         static string BuildJson(string projectRoot)
         {
             var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(LuxBridgeSettings).Assembly);
-            string packageVersion = packageInfo == null ? string.Empty : packageInfo.version;
-            string packageName = packageInfo == null ? "com.linalab.lux" : packageInfo.name;
+            string packageVersion = packageInfo == null ? "0.1.0" : packageInfo.version;
+            string packageName = packageInfo == null ? "com.linalab.lux-bridge" : packageInfo.name;
             string packageRoot = packageInfo == null ? string.Empty : packageInfo.resolvedPath;
             string rustGatewayPath = string.IsNullOrEmpty(packageRoot)
                 ? string.Empty

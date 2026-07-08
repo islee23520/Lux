@@ -1,7 +1,6 @@
 use lux::lux_roadmap::{
     roadmap_template_for_engine, save, RoadmapError, RoadmapPhaseStatus, RoadmapReality,
-    CAPABILITY_GLOBAL_CLI, CAPABILITY_GODOT_BRIDGE_WORKFLOW, CAPABILITY_MCP_STDIO,
-    CAPABILITY_THREE_JS_BRIDGE_WORKFLOW, CAPABILITY_UNITY_BRIDGE_WORKFLOW,
+    CAPABILITY_GLOBAL_CLI, CAPABILITY_MCP_STDIO, CAPABILITY_UNITY_BRIDGE_WORKFLOW,
     GLOBAL_CLI_MCP_BRIDGE_PHASE,
 };
 use lux_project::EngineKind;
@@ -110,58 +109,12 @@ fn unity_roadmap_template_selects_verified_bridge_workflow() {
     assert!(!roadmap
         .capabilities
         .iter()
-        .any(|capability| capability == CAPABILITY_GODOT_BRIDGE_WORKFLOW));
-    assert!(!roadmap
-        .capabilities
-        .iter()
-        .any(|capability| capability == CAPABILITY_THREE_JS_BRIDGE_WORKFLOW));
+        .any(|capability| capability.contains("godot") || capability.contains("three")));
 }
 
 #[test]
-fn godot_roadmap_template_selects_partial_bridge_workflow() {
-    let roadmap = roadmap_template_for_engine(EngineKind::Godot);
-
-    let phase = roadmap
-        .phases
-        .iter()
-        .find(|phase| phase.name == "M7: Godot Global CLI MCP Bridge Workflow")
-        .expect("selected Godot roadmap template should include Godot-specific phase");
-
-    assert_eq!(phase.status, RoadmapPhaseStatus::Partial);
-    assert!(roadmap
-        .capabilities
-        .iter()
-        .any(|capability| capability == CAPABILITY_GODOT_BRIDGE_WORKFLOW));
-    assert!(!roadmap
-        .capabilities
-        .iter()
-        .any(|capability| capability == CAPABILITY_UNITY_BRIDGE_WORKFLOW));
-}
-
-#[test]
-fn three_js_roadmap_template_stays_planned_without_bridge_parity() {
-    let roadmap = roadmap_template_for_engine(EngineKind::ThreeJs);
-
-    let phase = roadmap
-        .phases
-        .iter()
-        .find(|phase| phase.name == "M7: Three.js Global CLI MCP Bridge Workflow")
-        .expect("selected Three.js roadmap template should include Three.js-specific phase");
-
-    assert_eq!(phase.status, RoadmapPhaseStatus::Planned);
-    assert!(roadmap
-        .capabilities
-        .iter()
-        .any(|capability| capability == CAPABILITY_THREE_JS_BRIDGE_WORKFLOW));
-    assert!(!roadmap
-        .capabilities
-        .iter()
-        .any(|capability| capability == CAPABILITY_UNITY_BRIDGE_WORKFLOW));
-}
-
-#[test]
-fn roadmap_init_cli_writes_selected_godot_template() {
-    let temp = TestTempDir::new("cli-godot-template");
+fn roadmap_init_cli_writes_unity_template() {
+    let temp = TestTempDir::new("cli-unity-template");
 
     let output = Command::new(env!("CARGO_BIN_EXE_lux"))
         .args([
@@ -170,7 +123,7 @@ fn roadmap_init_cli_writes_selected_godot_template() {
             temp.path().to_str().expect("temp path should be UTF-8"),
             "init",
             "--engine",
-            "godot",
+            "unity",
         ])
         .output()
         .expect("run lux roadmap init");
@@ -189,14 +142,35 @@ fn roadmap_init_cli_writes_selected_godot_template() {
         .as_array()
         .expect("phases array")
         .iter()
-        .find(|phase| phase["name"] == "M7: Godot Global CLI MCP Bridge Workflow")
-        .expect("Godot template phase should be persisted");
-    assert_eq!(phase["status"], "partial");
+        .find(|phase| phase["name"] == GLOBAL_CLI_MCP_BRIDGE_PHASE)
+        .expect("Unity template phase should be persisted");
+    assert_eq!(phase["status"], "planned");
     assert!(payload["capabilities"]
         .as_array()
         .expect("capabilities array")
         .iter()
-        .any(|capability| capability == CAPABILITY_GODOT_BRIDGE_WORKFLOW));
+        .any(|capability| capability == CAPABILITY_UNITY_BRIDGE_WORKFLOW));
+}
+
+#[test]
+fn roadmap_init_cli_rejects_removed_engine_template() {
+    let temp = TestTempDir::new("cli-removed-engine-template");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lux"))
+        .args([
+            "roadmap",
+            "--project-path",
+            temp.path().to_str().expect("temp path should be UTF-8"),
+            "init",
+            "--engine",
+            "godot",
+        ])
+        .output()
+        .expect("run lux roadmap init");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr utf8");
+    assert!(stderr.contains("invalid value 'godot'"));
 }
 
 #[test]
@@ -213,7 +187,7 @@ fn roadmap_init_cli_refuses_existing_roadmap() {
             temp.path().to_str().expect("temp path should be UTF-8"),
             "init",
             "--engine",
-            "godot",
+            "unity",
         ])
         .output()
         .expect("run lux roadmap init");
@@ -247,7 +221,7 @@ fn roadmap_init_cli_rejects_symlinked_lux_root() {
             temp.path().to_str().expect("temp path should be UTF-8"),
             "init",
             "--engine",
-            "godot",
+            "unity",
         ])
         .output()
         .expect("run lux roadmap init");

@@ -6,9 +6,9 @@
 
 **LUX** = **L**inalab **U**nity **X**
 
-LUX는 게임 프로젝트를 위한 로컬 우선 서버/MCP 증거 기반 자동화 컨트롤 플레인입니다. AI 코딩 도구와 엔진 프로젝트 사이에 설치형 브릿지 어댑터를 두고, 런타임 진실을 `.lux/` 아래에 기록하며, CLI, HTTP/WebSocket, MCP 표면으로 검증된 프로젝트 상태를 노출합니다.
+LUX는 Unity 게임 프로젝트를 위한 로컬 우선 서버/MCP 증거 기반 자동화 컨트롤 플레인입니다. AI 코딩 도구와 Unity 프로젝트 사이에 설치형 브릿지 어댑터를 두고, 런타임 진실을 `.lux/` 아래에 기록하며, CLI, HTTP/WebSocket, MCP 표면으로 검증된 프로젝트 상태를 노출합니다.
 
-Unity가 public beta의 기본 검증 엔진 경로입니다. Godot과 Three.js는 명시적인 capability tier 안에서만 설명해야 하며, 계획됨, 부분 구현, adapter-only 상태를 완료된 제품 동작처럼 말하면 안 됩니다.
+Unity가 public beta의 유일한 active engine path입니다. Unity 다음 제품 우선순위는 Ouroforge이지만, 이 저장소에는 아직 Ouroforge runtime surface가 없습니다.
 
 ## LUX가 무엇인가요?
 
@@ -18,7 +18,7 @@ LUX는 Unity 패키지도 아니고 대상 게임 프로젝트도 아닙니다. 
 
 기본 흐름은 다음과 같습니다.
 
-1. 대상 프로젝트에 엔진 브릿지 어댑터를 설치합니다.
+1. 대상 프로젝트에 Unity 브릿지 어댑터를 설치합니다.
 2. Rust 게이트웨이를 로컬에서 실행합니다.
 3. AI 도구가 CLI, HTTP/WebSocket, MCP 명령을 사용합니다.
 4. 런타임 진실과 증거를 `.lux/` 아래에 기록합니다.
@@ -29,7 +29,7 @@ LUX는 Unity 패키지도 아니고 대상 게임 프로젝트도 아닙니다. 
 LUX는 고정된 루프로 움직입니다. 로컬 진실을 캡처하고, 증거로 결정하고, 게이트웨이를 통해 행동하고, 엔진 또는 `.lux/`로 검증한 뒤, 그 결과를 지속 가능한 컨텍스트로 다시 기록합니다. 이 루프는 단순 코드 수정만큼 빠르지는 않지만, AI agent가 오래된 가정만으로 진행했다고 주장하는 일을 막습니다.
 
 1. **관측** - `.lux/`, 프로젝트 파일, 엔진 capability 상태, Unity bridge 상태, 로그, 씬 계층, 스크린샷, 최근 실행 증거를 읽습니다.
-2. **라우팅** - 엔진과 작업에 맞는 검증 표면을 선택합니다. Unity는 전체 bridge-backed 경로를 사용할 수 있고, Godot과 Three.js는 선언된 maturity tier 안에 머물러야 합니다.
+2. **라우팅** - 작업에 맞는 검증된 Unity 표면을 선택합니다.
 3. **행동** - 런타임 상태를 우회 경로로 바꾸지 않고 Rust gateway를 통한 CLI, HTTP/WebSocket, MCP, bridge 명령으로 실행합니다.
 4. **검증** - 동작을 완료로 말하기 전에 compile/test/run/status 증거를 캡처합니다.
 5. **투영** - 검증된 상태를 README, `docs/`, skills, CLI 출력, `.lux/` summary로 노출하되 계획된 capability를 완료된 capability로 바꾸지 않습니다.
@@ -43,7 +43,7 @@ LUX는 고정된 루프로 움직입니다. 로컬 진실을 캡처하고, 증�
 | `.lux/` | 런타임 진실 | spec, capability 상태, ticket, event, roadmap, session, run evidence | 중복 cache truth 또는 손으로 유지하는 docs-only 상태 |
 | `gateway/` | 컨트롤 플레인 런타임 | Rust CLI, Axum HTTP/WS 서버, MCP tools, endpoint routing, engine command orchestration | Unity Editor window, dashboard, frontend app |
 | `crates/` | 공유 Rust package | gateway 책임에서 분리한 reusable core logic | `gateway/`에 있어야 하는 server wiring |
-| `bridge/` | 저장소 내부 엔진 브릿지 소스 | Unity C# bridge package, Godot adapter files, `lux bridge install`이 대상 프로젝트로 복사할 수 있는 Three.js adapter sources | Git submodule, 외부 bridge repository, 대상 Unity 프로젝트 상태, vendored dependency directory |
+| `bridge/` | 저장소 내부 엔진 브릿지 소스 | `lux bridge install`이 대상 프로젝트로 복사할 수 있는 Unity C# bridge package | Git submodule, 외부 bridge repository, 대상 Unity 프로젝트 상태, vendored dependency directory |
 | `Skills/` | agent workflow library | manifest-backed skill, reference, catalog, target project로 투영되는 template | gateway/bridge 증거 없이 workflow가 engine-verified라고 주장하는 내용 |
 | `docs/` | 사람이 읽는 projection | usage, ADR, support tier, roadmap 설명, design constraint | `.lux/`와 충돌할 때의 canonical runtime state |
 | `scripts/` | 로컬 검증과 유지보수 | structure check, policy scan, smoke script, release/test helper | 장기 실행 product surface 또는 숨겨진 runtime state |
@@ -52,24 +52,20 @@ Bridge sources는 이 저장소의 일반 파일입니다. `bridge/`를 git depe
 
 ## 엔진 Capability Snapshot
 
-엔진 지원은 동등한 완성도가 아니라 capability routing으로 설명합니다. Unity가 기본 검증 경로입니다. Godot과 Three.js는 실제로 지원되는 명령과 증거 수준만 노출합니다.
+엔진 지원은 Unity-first입니다. Godot과 Three.js adapter, CLI command, roadmap projection, capability record는 active LUX surface가 아닙니다.
 
 | 엔진 | 공개 maturity | 메모 |
 | --- | --- | --- |
 | Unity | verified | bridge, status, compile/test/run evidence의 기본 public-beta 경로 |
-| Godot | partial | detection, bridge install, status, workflow skill projection만 지원하며 build/run/test는 아직 unsupported |
-| Three.js | planned | adapter file은 있을 수 있지만 runtime harness가 존재하고 검증되기 전까지 planned 상태 |
 
-| Capability | Unity | Three.js | Godot |
-| --- | --- | --- | --- |
-| Project detection | verified | planned | verified |
-| `.lux` workspace | verified | planned | planned |
-| Bridge install | verified | planned | `--type godot`으로 verified |
-| Status | verified | planned | `gopeak.*`와 `lux.*` field를 분리해 verified |
-| Build/run/test | Unity path에서 verified | planned | GoPeak 기반 verification 전까지 unsupported |
-| `.agents` workflow skill | verified | planned | `lux-godot`으로 verified |
-
-Godot별 capability 상태는 [`docs/godot-support.md`](docs/godot-support.md)를 확인하세요.
+| Capability | Unity |
+| --- | --- |
+| Project detection | verified |
+| `.lux` workspace | verified |
+| Bridge install | verified |
+| Status | verified |
+| Build/run/test | Unity path에서 verified |
+| `.agents` workflow skill | verified |
 
 ## 아키텍처
 
@@ -215,7 +211,7 @@ lux ai-log tail
 | `narrative` | 스토리와 대화 |
 | `ui-ux` | UI/UX specification |
 | `technical-architecture` | 시스템 아키텍처 |
-| `engine` | Unity/Godot/Three.js capability routing |
+| `engine` | Unity capability routing |
 | `testing` | 자동 테스트와 수동 QA 전략 |
 | `build-release` | 빌드, 릴리스, 배포 |
 
@@ -229,9 +225,7 @@ Lux/
 │   │   ├── server.rs               # Axum router
 │   │   ├── protocol.rs             # Event envelope and bridge protocol
 │   │   ├── project.rs              # Unity project detection
-│   │   ├── project_godot.rs        # Godot project detection
 │   │   ├── bridge_types.rs         # Bridge type definitions
-│   │   ├── godot_bridge_install.rs # Godot bridge install path
 │   │   ├── lux_*.rs                # Lux core modules
 │   │   ├── uloop_*.rs              # Unity CLI passthrough
 │   │   ├── skill_adapter/          # Skill loading and adaptation
@@ -240,10 +234,8 @@ Lux/
 │   └── Cargo.toml
 │
 ├── crates/                         # Shared Rust core packages
-├── bridge/                         # Engine bridge adapters, in-repo source
-│   ├── unity/                      # Unity C# bridge
-│   ├── godot/                      # Godot bridge
-│   └── threejs/                    # Three.js adapter files
+├── bridge/                         # Unity bridge adapter, in-repo source
+│   └── unity/                      # Unity C# bridge
 ├── Skills/                         # Skill source tree
 ├── docs/                           # Human-readable docs and ADRs
 ├── scripts/                        # Verification and maintenance scripts

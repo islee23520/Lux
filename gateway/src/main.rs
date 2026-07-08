@@ -7,7 +7,6 @@ pub mod bridge_types;
 pub mod capture;
 pub mod config;
 pub mod cross_platform;
-pub mod godot_bridge_install;
 pub mod gopeak_manifest;
 pub mod lux_agents_install;
 pub mod lux_ai_session;
@@ -47,7 +46,6 @@ pub mod lux_triage;
 pub mod lux_verification;
 pub mod lux_worktree;
 pub mod project;
-pub mod project_godot;
 mod protocol;
 mod server;
 pub mod session;
@@ -127,8 +125,6 @@ enum Command {
     Mcp(McpArgs),
     Serve(ServeArgs),
     Unity(UnityArgs),
-    /// Inspect and operate Godot project harness support
-    Godot(GodotArgs),
     Skill(SkillArgs),
     AiLog(AiLogArgs),
     Compile(CompileArgs),
@@ -249,32 +245,6 @@ struct LuxInitArgs {
     no_agents_skills: bool,
 }
 
-#[derive(Parser, Debug)]
-struct GodotArgs {
-    #[command(subcommand)]
-    command: GodotCommand,
-}
-
-#[derive(Subcommand, Debug)]
-enum GodotCommand {
-    /// Show Godot project detection and Lux capability status
-    Status(GodotStatusArgs),
-    /// Build through Godot support once GoPeak build verification is available
-    Build(GodotBuildArgs),
-}
-
-#[derive(Parser, Debug)]
-struct GodotStatusArgs {
-    #[arg(long)]
-    project_path: Option<PathBuf>,
-}
-
-#[derive(Parser, Debug)]
-struct GodotBuildArgs {
-    #[arg(long)]
-    project_path: Option<PathBuf>,
-}
-
 fn parse_bridge_kind(value: &str) -> anyhow::Result<BridgeKind> {
     value.parse()
 }
@@ -381,16 +351,12 @@ struct LuxRoadmapInitArgs {
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum LuxRoadmapEngine {
     Unity,
-    Godot,
-    ThreeJs,
 }
 
 impl From<LuxRoadmapEngine> for lux_project::EngineKind {
     fn from(value: LuxRoadmapEngine) -> Self {
         match value {
             LuxRoadmapEngine::Unity => Self::Unity,
-            LuxRoadmapEngine::Godot => Self::Godot,
-            LuxRoadmapEngine::ThreeJs => Self::ThreeJs,
         }
     }
 }
@@ -1065,13 +1031,13 @@ struct UnityBridgeInstallArgs {
 
 #[derive(Parser, Debug)]
 struct UnityInstallUloopArgs {
-    /// Unity project root (used to determine npm install scope)
+    /// Unity project root where uloop-cli is installed as a devDependency
     #[arg(long, short = 'p')]
     project_path: PathBuf,
     /// Force reinstall even if already installed
     #[arg(long)]
     force: bool,
-    /// Install locally (into project) instead of globally
+    /// Deprecated: uloop-cli is always installed locally into the project
     #[arg(long)]
     local: bool,
     /// Specific version to install
@@ -1438,7 +1404,6 @@ async fn execute_cli_command(cli: Cli, config: &config::LuxConfig) -> anyhow::Re
         Command::Mcp(args) => run_lux_mcp_command(args),
         Command::Serve(args) => serve(args, &config).await,
         Command::Unity(args) => run_lux_unity_command(args),
-        Command::Godot(args) => run_lux_godot_command(args),
         Command::Skill(args) => run_skill_command(args),
         Command::AiLog(args) => run_ai_log_command(args),
         Command::Compile(args) => {
@@ -3299,79 +3264,6 @@ fn read_skill_adaptation_metadata(directory_path: &Path) -> Option<Value> {
 }
 
 // ---------------------------------------------------------------------------
-// lux godot
-// ---------------------------------------------------------------------------
-
-fn run_lux_godot_command(args: GodotArgs) -> anyhow::Result<()> {
-    match args.command {
-        GodotCommand::Status(status_args) => print_lux_godot_status(status_args),
-        GodotCommand::Build(build_args) => run_lux_godot_build(build_args),
-    }
-}
-
-fn print_lux_godot_status(args: GodotStatusArgs) -> anyhow::Result<()> {
-    let project_root = resolve_project_root(&args.project_path)?;
-    let detection = project_godot::detect_godot_project(&project_root);
-    let gopeak = gopeak_manifest::sync_manifest(&project_root)?;
-    let detected = detection.is_some();
-    let _capabilities = lux_engines::write_engine_capability_snapshot(
-        &project_root,
-        lux_project::EngineKind::Godot,
-    )?;
-    let capability_blockers = lux_project::recommended_capability_blockers(
-        detected.then_some(lux_project::EngineKind::Godot),
-    );
-    let supported_commands = if detected {
-        vec!["godot status", "bridge install --type godot"]
-    } else {
-        Vec::new()
-    };
-    let unsupported_commands = vec![
-        "godot build",
-        "godot run",
-        "godot test",
-        "godot scene inspect",
-        "godot screenshot",
-    ];
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&json!({
-            "ok": detected,
-            "engine": "godot",
-            "project_root": project_root,
-            "detected": detection.as_ref().map(|detection| {
-                json!({
-                    "godot_version": detection.godot_version,
-                    "has_godot_dir": detection.has_godot_dir,
-                })
-            }),
-            "gopeak": {
-                "installed": gopeak.installed,
-                "available_commands": gopeak.available_commands,
-                "missing_commands": gopeak.missing_commands,
-            },
-            "lux": {
-                "supported_commands": supported_commands,
-                "unsupported_commands": unsupported_commands,
-                "capability_blockers": capability_blockers,
-            },
-            "message": if detected {
-                "Godot 4 project detected"
-            } else {
-                "Godot 4 project not detected at the specified path"
-            },
-        }))?
-    );
-    Ok(())
-}
-
-fn run_lux_godot_build(_args: GodotBuildArgs) -> anyhow::Result<()> {
-    anyhow::bail!(
-        "lux godot build is not supported until GoPeak-backed build has automated verification"
-    )
-}
-
-// ---------------------------------------------------------------------------
 // lux unity status
 // ---------------------------------------------------------------------------
 
@@ -3758,7 +3650,10 @@ fn print_lux_backend_get_hierarchy(args: UnityGetHierarchyArgs) -> anyhow::Resul
     let response_json = send_unity_bridge_request(&discovery, &request)?;
     if response_json.get("ok").and_then(Value::as_bool) != Some(true) {
         if is_unity_registry_not_ready_for(&response_json, "get_lux_hierarchy") {
-            return print_lux_backend_scene_ast_hierarchy(&discovery, filter_count == 0 || args.all);
+            return print_lux_backend_scene_ast_hierarchy(
+                &discovery,
+                filter_count == 0 || args.all,
+            );
         }
 
         bail!(
@@ -3825,7 +3720,10 @@ fn print_lux_backend_scene_ast_hierarchy(
     });
     let response_json = send_unity_bridge_request(discovery, &request)?;
     if response_json.get("ok").and_then(Value::as_bool) != Some(true) {
-        bail!("Unity backend rejected get_scene_ast fallback: {}", response_json);
+        bail!(
+            "Unity backend rejected get_scene_ast fallback: {}",
+            response_json
+        );
     }
 
     let scene_ast = response_json
@@ -3871,10 +3769,8 @@ fn send_unity_bridge_request(
     discovery: &UnityBridgeDiscovery,
     request: &Value,
 ) -> anyhow::Result<Value> {
-    let response_line = send_unity_tcp_line(
-        discovery,
-        &format!("{}\n", serde_json::to_string(request)?),
-    )?;
+    let response_line =
+        send_unity_tcp_line(discovery, &format!("{}\n", serde_json::to_string(request)?))?;
     serde_json::from_str(&response_line).context("Unity TCP response was not valid JSON")
 }
 
@@ -4301,9 +4197,6 @@ fn run_bridge_command(args: BridgeArgs) -> anyhow::Result<()> {
                         // Don't fail bridge install — uloop is optional enhancement
                     }
                 }
-                BridgeKind::Godot => {
-                    godot_bridge_install::install_godot_bridge(&project_root)?;
-                }
             }
 
             Ok(())
@@ -4372,6 +4265,32 @@ fn watch_unity_bridge_events(args: BridgeWatchArgs) -> anyhow::Result<()> {
     }
 }
 
+fn resolve_bridge_source() -> anyhow::Result<PathBuf> {
+    if let Some(path) = std::env::var_os("LUX_BRIDGE_SOURCE") {
+        let candidate = PathBuf::from(path);
+        if candidate.join("AiBridgeEditor").is_dir() {
+            return Ok(candidate);
+        }
+    }
+    let manifest_bridge = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join("bridge")
+        .join("unity");
+    if manifest_bridge.join("AiBridgeEditor").is_dir() {
+        return Ok(manifest_bridge);
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let cache_path = PathBuf::from(home).join(".lux").join("bridge");
+        if cache_path.join("AiBridgeEditor").is_dir() {
+            return Ok(cache_path);
+        }
+    }
+    anyhow::bail!(
+        "Unity bridge source not found. Set LUX_BRIDGE_SOURCE to the bridge/unity directory."
+    );
+}
+
 fn install_bridge_files(args: BridgeInstallArgs) -> anyhow::Result<()> {
     let project_root = args.project_path;
     if !project_root.exists() {
@@ -4381,26 +4300,23 @@ fn install_bridge_files(args: BridgeInstallArgs) -> anyhow::Result<()> {
     std::fs::create_dir_all(&assets_editor)
         .with_context(|| format!("Failed to create {}", assets_editor.display()))?;
 
-    let bridge_source = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap_or(Path::new("."))
-        .join("bridge")
-        .join("unity");
+    let has_precompiled_dll = std::env::var_os("LUX_BRIDGE_PRECOMPILED_DLL")
+        .map(|p| PathBuf::from(p).is_file())
+        .unwrap_or(false);
 
-    let bridge_editor_source = bridge_source.join("AiBridgeEditor");
-    let bridge_settings_source = bridge_source.join("LuxBridgeSettings.cs");
-    if !bridge_editor_source.is_dir() {
-        anyhow::bail!(
-            "Unity bridge source directory not found: {}",
-            bridge_editor_source.display()
-        );
-    }
-    if !bridge_settings_source.is_file() {
-        anyhow::bail!(
-            "Unity bridge settings source file not found: {}",
-            bridge_settings_source.display()
-        );
-    }
+    let bridge_source = if has_precompiled_dll {
+        PathBuf::new()
+    } else {
+        let source = resolve_bridge_source()?;
+        let bridge_editor_source = source.join("AiBridgeEditor");
+        if !bridge_editor_source.is_dir() {
+            anyhow::bail!(
+                "Unity bridge source directory not found: {}",
+                bridge_editor_source.display()
+            );
+        }
+        source
+    };
 
     let bridge_target = assets_editor.join("LuxBridge");
     if bridge_target.exists() {
@@ -4411,21 +4327,20 @@ fn install_bridge_files(args: BridgeInstallArgs) -> anyhow::Result<()> {
             )
         })?;
     }
-    copy_dir_recursive(&bridge_editor_source, &bridge_target).with_context(|| {
+    std::fs::create_dir_all(&bridge_target)
+        .with_context(|| format!("Failed to create {}", bridge_target.display()))?;
+
+    let bridge_dll = build_unity_bridge_dll(&bridge_source)
+        .context("Failed to build Unity bridge precompiled DLL")?;
+    let dll_target = bridge_target.join("Linalab.UnityAiBridge.Editor.dll");
+    std::fs::copy(&bridge_dll, &dll_target).with_context(|| {
         format!(
             "Failed to copy {} to {}",
-            bridge_editor_source.display(),
-            bridge_target.display()
+            bridge_dll.display(),
+            dll_target.display()
         )
     })?;
-    let settings_target = bridge_target.join("LuxBridgeSettings.cs");
-    std::fs::copy(&bridge_settings_source, &settings_target).with_context(|| {
-        format!(
-            "Failed to copy {} to {}",
-            bridge_settings_source.display(),
-            settings_target.display()
-        )
-    })?;
+    write_unity_bridge_dll_meta(&dll_target.with_extension("dll.meta"))?;
 
     let legacy_bridge_target = assets_editor.join("AiBridgeEditor");
     if legacy_bridge_target.exists() {
@@ -4437,9 +4352,9 @@ fn install_bridge_files(args: BridgeInstallArgs) -> anyhow::Result<()> {
         })?;
     }
     eprintln!(
-        "Copied {} -> {}",
-        bridge_source.display(),
-        bridge_target.display()
+        "Installed precompiled Unity bridge {} -> {}",
+        bridge_dll.display(),
+        dll_target.display()
     );
 
     // OpenCode commands (.opencode/commands/) — opt-in only, user chooses
@@ -4510,12 +4425,188 @@ fn install_bridge_files(args: BridgeInstallArgs) -> anyhow::Result<()> {
             commands_dir.display()
         );
     } else {
-        eprintln!("  → Skipped .opencode/commands/ installation (use --opencode-commands to install).");
+        eprintln!(
+            "  → Skipped .opencode/commands/ installation (use --opencode-commands to install)."
+        );
     }
 
     eprintln!("Bridge installed to {}", bridge_target.display());
-    eprintln!("Open Unity Editor and wait for recompile. Menu 'AI Bridge' will appear.");
+    eprintln!("Open Unity Editor and wait for plugin import. Menu 'AI Bridge' will appear.");
     Ok(())
+}
+
+fn build_unity_bridge_dll(bridge_source: &Path) -> anyhow::Result<PathBuf> {
+    if let Some(path) = std::env::var_os("LUX_BRIDGE_PRECOMPILED_DLL") {
+        let dll_path = PathBuf::from(path);
+        if dll_path.is_file() {
+            return Ok(dll_path);
+        }
+        anyhow::bail!(
+            "LUX_BRIDGE_PRECOMPILED_DLL does not point to a file: {}",
+            dll_path.display()
+        );
+    }
+
+    let unity_executable = find_unity_executable()?;
+    let project_path = create_bridge_build_project(bridge_source)?;
+    let log_path = project_path.join("lux-bridge-build.log");
+
+    let status = ProcessCommand::new(&unity_executable)
+        .arg("-batchmode")
+        .arg("-quit")
+        .arg("-projectPath")
+        .arg(&project_path)
+        .arg("-logFile")
+        .arg(&log_path)
+        .status()
+        .with_context(|| format!("failed to start Unity at {}", unity_executable.display()))?;
+
+    if !status.success() {
+        anyhow::bail!(
+            "Unity bridge DLL build failed with status {status}. See {}",
+            log_path.display()
+        );
+    }
+
+    let dll_path = project_path
+        .join("Library")
+        .join("ScriptAssemblies")
+        .join("Linalab.UnityAiBridge.Editor.dll");
+    if !dll_path.is_file() {
+        anyhow::bail!(
+            "Unity bridge DLL was not produced at {}. See {}",
+            dll_path.display(),
+            log_path.display()
+        );
+    }
+
+    Ok(dll_path)
+}
+
+fn create_bridge_build_project(bridge_source: &Path) -> anyhow::Result<PathBuf> {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .context("system time is before unix epoch")?
+        .as_millis();
+    let project_path = std::env::temp_dir().join(format!(
+        "lux-bridge-unity-build-{}-{unique}",
+        std::process::id()
+    ));
+    let assets_dir = project_path.join("Assets");
+    let packages_dir = project_path.join("Packages");
+    let project_settings_dir = project_path.join("ProjectSettings");
+    std::fs::create_dir_all(&assets_dir)
+        .with_context(|| format!("failed to create {}", assets_dir.display()))?;
+    let lux_bridge_assets = assets_dir.join("LuxBridge");
+    copy_dir_recursive(&bridge_source.join("AiBridgeEditor"), &lux_bridge_assets).with_context(
+        || {
+            format!(
+                "Failed to copy bridge sources to {}",
+                lux_bridge_assets.display()
+            )
+        },
+    )?;
+    let settings_source = bridge_source.join("LuxBridgeSettings.cs");
+    if settings_source.is_file() {
+        std::fs::copy(
+            &settings_source,
+            lux_bridge_assets.join("LuxBridgeSettings.cs"),
+        )
+        .with_context(|| format!("Failed to copy {}", settings_source.display()))?;
+    }
+    std::fs::create_dir_all(&packages_dir)
+        .with_context(|| format!("failed to create {}", packages_dir.display()))?;
+    std::fs::create_dir_all(&project_settings_dir)
+        .with_context(|| format!("failed to create {}", project_settings_dir.display()))?;
+
+    let manifest = json!({
+        "dependencies": {}
+    });
+    std::fs::write(
+        packages_dir.join("manifest.json"),
+        serde_json::to_string_pretty(&manifest)?,
+    )
+    .with_context(|| {
+        format!(
+            "failed to write {}",
+            packages_dir.join("manifest.json").display()
+        )
+    })?;
+    std::fs::write(
+        project_settings_dir.join("ProjectVersion.txt"),
+        "m_EditorVersion: 6000.0.75f1\n",
+    )
+    .with_context(|| {
+        format!(
+            "failed to write {}",
+            project_settings_dir.join("ProjectVersion.txt").display()
+        )
+    })?;
+
+    Ok(project_path)
+}
+
+fn find_unity_executable() -> anyhow::Result<PathBuf> {
+    for variable in ["LUX_UNITY_PATH", "UNITY_PATH"] {
+        if let Some(path) = std::env::var_os(variable) {
+            let candidate = PathBuf::from(path);
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+            let app_executable = candidate.join("Contents/MacOS/Unity");
+            if app_executable.is_file() {
+                return Ok(app_executable);
+            }
+        }
+    }
+
+    let hub_dir = Path::new("/Applications/Unity/Hub/Editor");
+    let mut candidates = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(hub_dir) {
+        for entry in entries.flatten() {
+            let unity = entry.path().join("Unity.app/Contents/MacOS/Unity");
+            if unity.is_file() {
+                candidates.push(unity);
+            }
+        }
+    }
+    candidates.sort();
+    candidates.reverse();
+    candidates.into_iter().next().with_context(|| {
+        "Unity executable not found. Set LUX_UNITY_PATH to Unity.app or the Unity binary"
+    })
+}
+
+fn write_unity_bridge_dll_meta(path: &Path) -> anyhow::Result<()> {
+    const META: &str = r#"fileFormatVersion: 2
+guid: 8c8f1b0997a34f18867a78c17682ef90
+PluginImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  iconMap: {}
+  executionOrder: {}
+  defineConstraints: []
+  isPreloaded: 0
+  isOverridable: 0
+  isExplicitlyReferenced: 0
+  validateReferences: 1
+  platformData:
+  - first:
+      Any: 
+    second:
+      enabled: 0
+      settings: {}
+  - first:
+      Editor: Editor
+    second:
+      enabled: 1
+      settings:
+        DefaultValueInitialized: true
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+"#;
+    std::fs::write(path, META).with_context(|| format!("failed to write {}", path.display()))
 }
 
 fn install_uloop_package(project_root: &Path) -> anyhow::Result<()> {
@@ -4524,14 +4615,22 @@ fn install_uloop_package(project_root: &Path) -> anyhow::Result<()> {
 
 fn install_uloop_package_with_options(
     project_root: &Path,
-    local: bool,
+    _local: bool,
     force: bool,
     version: Option<&str>,
 ) -> anyhow::Result<()> {
     eprintln!("📦 Installing uloop (unity-cli-loop)...");
 
     let pkg_json = project_root.join("package.json");
-    let install_local = local || pkg_json.exists();
+    if !pkg_json.exists() {
+        let package_manifest = serde_json::json!({
+            "private": true,
+            "devDependencies": {}
+        });
+        fs::write(&pkg_json, serde_json::to_vec_pretty(&package_manifest)?)
+            .with_context(|| format!("failed to write {}", pkg_json.display()))?;
+    }
+
     let package = match version {
         Some(version) if !version.trim().is_empty() => format!("uloop-cli@{}", version.trim()),
         _ => "uloop-cli".to_string(),
@@ -4539,13 +4638,8 @@ fn install_uloop_package_with_options(
 
     let mut cmd = ProcessCommand::new("npm");
     cmd.arg("install");
-    if install_local {
-        cmd.arg(&package).arg("--save-dev");
-        eprintln!("   Installing uloop-cli as devDependency in Unity project");
-    } else {
-        cmd.arg("-g").arg(&package);
-        eprintln!("   Installing uloop-cli globally (-g)");
-    }
+    cmd.arg(&package).arg("--save-dev");
+    eprintln!("   Installing uloop-cli as devDependency in Unity project");
     if force {
         cmd.arg("--force");
     }
@@ -4563,12 +4657,12 @@ fn install_uloop_package_with_options(
         );
     }
 
-    let installed_version = read_installed_uloop_version(project_root, install_local)
-        .unwrap_or_else(|_| "unknown".to_string());
+    let installed_version =
+        read_installed_uloop_version(project_root, true).unwrap_or_else(|_| "unknown".to_string());
     let install_state = serde_json::json!({
         "installed_at": chrono::Utc::now().to_rfc3339(),
         "version": installed_version,
-        "install_scope": if install_local { "local" } else { "global" },
+        "install_scope": "local",
         "project_root": project_root.to_string_lossy(),
     });
 
@@ -4670,11 +4764,57 @@ fn is_transient_socket_error(error: &std::io::Error) -> bool {
 
 fn print_lux_unity_context(args: UnityContextArgs) -> anyhow::Result<()> {
     let project_root = resolve_project_root(&args.project_path)?;
-    if args.refresh && refresh_lux_unity_context_via_bridge(&project_root)? {
-        return Ok(());
-    }
     if args.refresh {
-        refresh_lux_unity_context(&project_root)?;
+        if refresh_lux_unity_context_via_bridge(&project_root)? {
+            return Ok(());
+        }
+
+        eprintln!("No live Unity bridge. Launching Unity batchmode for context refresh...");
+        let launch_target = resolve_unity_launch_target(&project_root)?;
+        let log_path = project_root
+            .join("TestResults")
+            .join("ContextRefreshLog.log");
+        if let Some(parent) = log_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let status = ProcessCommand::new(&launch_target.executable)
+            .args(&launch_target.prefix_args)
+            .args([
+                "-batchmode",
+                "-quit",
+                "-projectPath",
+                project_root.to_str().unwrap(),
+                "-executeMethod",
+                "Linalab.Lux.Editor.LuxUnityContext.Refresh",
+                "-logFile",
+                log_path.to_str().unwrap(),
+            ])
+            .status()
+            .with_context(|| {
+                format!(
+                    "failed to launch Unity at {}",
+                    launch_target.executable.display()
+                )
+            })?;
+
+        if !status.success() {
+            anyhow::bail!(
+                "Unity batchmode context refresh failed with status {status}. See {}",
+                log_path.display()
+            );
+        }
+
+        let context_path = project_root
+            .join("UserSettings")
+            .join("LuxUnityContext.json");
+        let context_text = std::fs::read_to_string(&context_path).with_context(|| {
+            format!(
+                "LuxUnityContext.json not found at {} after batchmode refresh",
+                context_path.display()
+            )
+        })?;
+        println!("{context_text}");
+        return Ok(());
     }
 
     let context_path = project_root.join("UserSettings/LuxUnityContext.json");
@@ -4718,17 +4858,30 @@ fn refresh_lux_unity_context_via_bridge(project_root: &Path) -> anyhow::Result<b
         .get("payload")
         .and_then(|payload| payload.get("selectedFileContext"))
         .context("Unity TCP response did not include payload.selectedFileContext")?;
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&json!({
-            "schema_version": 1,
-            "protocol": "lux.unity.context.v1",
-            "source": "get_selected_file_context",
-            "generated_at_utc": response_json.get("capturedAtUtc").cloned().unwrap_or(Value::Null),
-            "project_root": project_root,
-            "selected_file_context": selected_file_context,
-        }))?
-    );
+    let context_value = json!({
+        "schema_version": 1,
+        "protocol": "lux.unity.context.v1",
+        "source": "get_selected_file_context",
+        "generated_at_utc": response_json.get("capturedAtUtc").cloned().unwrap_or(Value::Null),
+        "project_root": project_root,
+        "selected_file_context": selected_file_context,
+    });
+    let context_json_string = serde_json::to_string_pretty(&context_value)?;
+    let context_cache = project_root
+        .join("UserSettings")
+        .join("LuxUnityContext.json");
+    if let Some(parent) = context_cache.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Err(e) = std::fs::write(&context_cache, &context_json_string) {
+        eprintln!(
+            "Warning: failed to cache context to {}: {e}",
+            context_cache.display()
+        );
+    } else {
+        eprintln!("Context cached to {}", context_cache.display());
+    }
+    println!("{context_json_string}");
     Ok(true)
 }
 
@@ -4779,7 +4932,7 @@ fn refresh_lux_unity_context(project_root: &Path) -> anyhow::Result<()> {
 fn print_lux_unity_status(args: UnityStatusArgs) -> anyhow::Result<()> {
     let project_root = match args.project_path {
         Some(path) => path,
-        None => find_unity_project_root(std::env::current_dir()?)
+        None => project::find_unity_project_root(std::env::current_dir()?)
             .context("Unity project not found. Use --project-path.")?,
     };
     let settings_path = project_root.join("UserSettings/LuxBridgeSettings.json");
@@ -4825,7 +4978,8 @@ fn print_lux_unity_status(args: UnityStatusArgs) -> anyhow::Result<()> {
 fn run_batch_compile(args: CompileArgs) -> anyhow::Result<()> {
     let project_root = resolve_project_root(&args.project_path)?;
 
-    let bridge_marker = project_root.join("Assets/Editor/LuxBridge/LuxBatchAutomation.cs");
+    let bridge_marker =
+        project_root.join("Assets/Editor/LuxBridge/Linalab.UnityAiBridge.Editor.dll");
     if !bridge_marker.exists() {
         eprintln!(
             "Bridge not installed, auto-installing to {}...",
@@ -5116,12 +5270,8 @@ fn run_batch_tests(args: RunTestsArgs) -> anyhow::Result<()> {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-fn resolve_project_root(project_path: &Option<PathBuf>) -> anyhow::Result<PathBuf> {
-    match project_path {
-        Some(path) => Ok(cross_platform::normalize_path_buf(path.clone())),
-        None => find_unity_project_root(std::env::current_dir()?)
-            .context("Unity project not found. Use --project-path."),
-    }
+pub fn resolve_project_root(project_path: &Option<PathBuf>) -> anyhow::Result<PathBuf> {
+    project::resolve_project_root(project_path)
 }
 
 fn resolve_lux_project_root(project_path: &Option<PathBuf>) -> anyhow::Result<PathBuf> {
@@ -5149,21 +5299,6 @@ fn find_lux_root_from(start: &Path) -> Option<PathBuf> {
             return None;
         }
     }
-}
-
-fn find_unity_project_root(mut current: PathBuf) -> Option<PathBuf> {
-    loop {
-        if is_unity_project(&current) {
-            return Some(current);
-        }
-        if !current.pop() {
-            return None;
-        }
-    }
-}
-
-fn is_unity_project(path: &Path) -> bool {
-    path.join("Assets").is_dir() && path.join("ProjectSettings").is_dir()
 }
 
 pub struct UnityLaunchTarget {
@@ -5389,7 +5524,7 @@ async fn shutdown_signal(state: server::GatewayState, idle_timeout: Option<Durat
 
 fn run_install_command(args: InstallArgs) -> anyhow::Result<()> {
     let project_path = resolve_project_root(&args.project)?;
-    if !is_unity_project(&project_path) {
+    if !project::is_unity_project(&project_path) {
         bail!("target is not a Unity project: missing Assets/ or ProjectSettings/");
     }
 
