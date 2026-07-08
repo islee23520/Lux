@@ -20,4 +20,4 @@ Execute the evaluation:
 lux spec validate
 ```
 
-Then review `.lux/specs/` and the current project state. Identify the highest-priority incomplete step, but do not claim completion from intent alone. Unity is the primary verified engine surface; Godot and Three.js remain capability-routed and must record unsupported manual QA observations as blockers rather than fake parity.
+Then review `.lux/specs/` and the current project state. Identify the highest-priority incomplete step, but do not claim completion from intent alone. Unity is the verified engine surface; unsupported observations must record blockers rather than fake parity.

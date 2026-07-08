@@ -16,10 +16,18 @@ use crate::{
     lux_ticket::{
         DispatchPolicy, FileTicketStore, Ticket, TicketPriority, TicketStatus, TicketStore,
     },
+    uloop_runner,
 };
 
+#[path = "lux_mcp_selection_context.rs"]
+mod lux_mcp_selection_context;
+
+const TOOL_UNITY_MCP_CONTRACT: &str = "lux_unity_mcp_contract";
 const TOOL_BRIDGE_INSTALL: &str = "lux_bridge_install";
 const TOOL_BRIDGE_DIAGNOSTICS: &str = "lux_bridge_diagnostics";
+const TOOL_UNITY_ULOOP: &str = "lux_unity_uloop";
+const TOOL_UNITY_SELECTION_CONTEXT_REGISTER: &str = "lux_unity_selection_context_register";
+const TOOL_UNITY_SELECTION_CONTEXT_LATEST: &str = "lux_unity_selection_context_latest";
 const TOOL_SPEC_WRITE: &str = "lux_game_spec_write";
 const TOOL_TICKET_PREPARE: &str = "lux_game_ticket_prepare";
 const TOOL_UNITY_MANEUVER: &str = "lux_unity_maneuver";
@@ -169,10 +177,26 @@ fn handle_json_rpc(default_project: &Path, request: &Value) -> Option<Value> {
 fn tool_definitions() -> Vec<Value> {
     vec![
         tool_definition(
+            TOOL_UNITY_MCP_CONTRACT,
+            "Describe the LazyCodex-native Lux Unity MCP contract.",
+        ),
+        tool_definition(
             TOOL_BRIDGE_INSTALL,
             "Install or refresh the Lux Unity bridge.",
         ),
         tool_definition(TOOL_BRIDGE_DIAGNOSTICS, "Run Lux bridge diagnostics."),
+        tool_definition(
+            TOOL_UNITY_ULOOP,
+            "Run a bounded Unity uloop CLI command through Lux MCP.",
+        ),
+        tool_definition(
+            TOOL_UNITY_SELECTION_CONTEXT_REGISTER,
+            "Register the latest Unity selection context JSON under .lux/context.",
+        ),
+        tool_definition(
+            TOOL_UNITY_SELECTION_CONTEXT_LATEST,
+            "Read the latest registered Unity selection context JSON.",
+        ),
         tool_definition(
             TOOL_SPEC_WRITE,
             "Write or import a minimal game spec into .lux/spec.json.",
@@ -193,23 +217,57 @@ fn tool_definitions() -> Vec<Value> {
 }
 
 fn tool_definition(name: &str, description: &str) -> Value {
+    let properties = match name {
+        TOOL_UNITY_MCP_CONTRACT | TOOL_BRIDGE_INSTALL | TOOL_BRIDGE_DIAGNOSTICS => json!({
+            "project_path": { "type": "string" }
+        }),
+        TOOL_UNITY_ULOOP => json!({
+            "project_path": { "type": "string" },
+            "uloop_command": { "type": "string" },
+            "args": { "type": "array", "items": { "type": "string" } }
+        }),
+        TOOL_UNITY_SELECTION_CONTEXT_REGISTER => json!({
+            "project_path": { "type": "string" },
+            "context": { "type": "object" }
+        }),
+        TOOL_UNITY_SELECTION_CONTEXT_LATEST => json!({
+            "project_path": { "type": "string" }
+        }),
+        TOOL_SPEC_WRITE => json!({
+            "project_path": { "type": "string" },
+            "project_name": { "type": "string" },
+            "objective": { "type": "string" },
+            "seed": { "type": "object" },
+            "spec_seed": { "type": "object" }
+        }),
+        TOOL_TICKET_PREPARE => json!({
+            "project_path": { "type": "string" },
+            "objective": { "type": "string" },
+            "verification_policy": { "type": "string" },
+            "non_goals": { "type": "array", "items": { "type": "string" } }
+        }),
+        TOOL_UNITY_MANEUVER => json!({
+            "project_path": { "type": "string" },
+            "ticket_id": { "type": "string" }
+        }),
+        TOOL_LOOP_ONCE => json!({
+            "project_path": { "type": "string" },
+            "project_name": { "type": "string" },
+            "objective": { "type": "string" },
+            "seed": { "type": "object" },
+            "spec_seed": { "type": "object" },
+            "verification_policy": { "type": "string" },
+            "non_goals": { "type": "array", "items": { "type": "string" } }
+        }),
+        _ => json!({}),
+    };
+
     json!({
         "name": name,
         "description": description,
         "inputSchema": {
             "type": "object",
-            "properties": {
-                "project_path": { "type": "string" },
-                "project_name": { "type": "string" },
-                "objective": { "type": "string" },
-                "seed": { "type": "object" },
-                "spec_seed": { "type": "object" },
-                "validation_policy": { "type": "string" },
-                "autonomy_policy": { "type": "string" },
-                "ticket_id": { "type": "string" },
-                "verification_policy": { "type": "string" },
-                "non_goals": { "type": "array", "items": { "type": "string" } }
-            },
+            "properties": properties,
             "additionalProperties": false
         }
     })
@@ -223,12 +281,24 @@ fn handle_tool_call(default_project: &Path, params: &Value) -> Result<Value> {
     let arguments = params.get("arguments").unwrap_or(&Value::Null);
 
     match name {
+        TOOL_UNITY_MCP_CONTRACT => {
+            wrap_tool_result(name, unity_mcp_contract(arguments, Some(default_project)))
+        }
         TOOL_BRIDGE_INSTALL => {
             wrap_tool_result(name, bridge_install(arguments, Some(default_project)))
         }
         TOOL_BRIDGE_DIAGNOSTICS => {
             wrap_tool_result(name, bridge_diagnostics(arguments, Some(default_project)))
         }
+        TOOL_UNITY_ULOOP => wrap_tool_result(name, unity_uloop(arguments, Some(default_project))),
+        TOOL_UNITY_SELECTION_CONTEXT_REGISTER => wrap_tool_result(
+            name,
+            lux_mcp_selection_context::register(arguments, Some(default_project)),
+        ),
+        TOOL_UNITY_SELECTION_CONTEXT_LATEST => wrap_tool_result(
+            name,
+            lux_mcp_selection_context::latest(arguments, Some(default_project)),
+        ),
         TOOL_SPEC_WRITE => {
             wrap_tool_result(name, game_spec_write(arguments, Some(default_project)))
         }
@@ -303,6 +373,132 @@ fn project_path_from_args(
     default_project_path
         .map(Path::to_path_buf)
         .ok_or_else(|| anyhow!("project_path is required"))
+}
+
+fn unity_mcp_contract(arguments: &Value, default_project_path: Option<&Path>) -> Result<Value> {
+    let project_path = project_path_from_args(arguments, default_project_path)?;
+    let tools = unity_contract_tools();
+    Ok(json!({
+        "ok": true,
+        "protocol": "lux.lazycodex_unity_mcp.v1",
+        "engine": "unity",
+        "primaryEngine": "unity",
+        "maturity": "verified",
+        "lazycodexNative": true,
+        "projectPath": project_path,
+        "primaryServer": {
+            "name": "lux",
+            "transport": "stdio",
+            "args": ["mcp", "--project-path", project_path]
+        },
+        "lazycodex": {
+            "integrationSource": "lux_mcp_projection",
+            "externalSourceModified": false
+        },
+        "unity": {
+            "maturity": "verified",
+            "bridge": "Lux Unity bridge",
+            "tools": tools
+        },
+        "tools": tools,
+        "message": "Lux LazyCodex-native Unity MCP contract projected"
+    }))
+}
+
+fn unity_contract_tools() -> Vec<Value> {
+    vec![
+        json!({
+            "name": TOOL_BRIDGE_INSTALL,
+            "purpose": "Install or refresh the Lux Unity bridge in the target project."
+        }),
+        json!({
+            "name": TOOL_BRIDGE_DIAGNOSTICS,
+            "purpose": "Report Unity bridge discovery and availability.",
+            "unavailableState": {
+                "ok": false,
+                "stopReason": "unity_bridge_unavailable"
+            }
+        }),
+        json!({
+            "name": TOOL_UNITY_ULOOP,
+            "purpose": "Run a bounded Unity uloop command with explicit arguments."
+        }),
+        json!({
+            "name": TOOL_UNITY_SELECTION_CONTEXT_REGISTER,
+            "purpose": "Register the latest Unity selection context JSON under .lux/context."
+        }),
+        json!({
+            "name": TOOL_UNITY_SELECTION_CONTEXT_LATEST,
+            "purpose": "Read the latest registered Unity selection context JSON."
+        }),
+        json!({
+            "name": TOOL_SPEC_WRITE,
+            "purpose": "Write or import a minimal Lux game spec."
+        }),
+        json!({
+            "name": TOOL_TICKET_PREPARE,
+            "purpose": "Create or select one safe first-loop game-development ticket."
+        }),
+        json!({
+            "name": TOOL_UNITY_MANEUVER,
+            "purpose": "Perform one safe Unity maneuver or return explicit unavailable state.",
+            "unavailableState": {
+                "ok": false,
+                "stopReason": "unity_maneuver_unavailable"
+            }
+        }),
+        json!({
+            "name": TOOL_LOOP_ONCE,
+            "purpose": "Run one safe Lux game-development loop and stop."
+        }),
+    ]
+}
+
+fn unity_uloop(arguments: &Value, default_project_path: Option<&Path>) -> Result<Value> {
+    let project_path = project_path_from_args(arguments, default_project_path)?;
+    let command = arguments
+        .get("uloop_command")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow!("uloop_command is required"))?;
+    let mut uloop_args = vec![command.to_string()];
+    match arguments.get("args") {
+        Some(Value::Array(args)) => {
+            for arg in args {
+                let value = arg
+                    .as_str()
+                    .ok_or_else(|| anyhow!("args must contain only strings"))?;
+                uloop_args.push(value.to_string());
+            }
+        }
+        Some(_) => anyhow::bail!("args must be an array of strings"),
+        None => {}
+    }
+    let arg_refs = uloop_args.iter().map(String::as_str).collect::<Vec<_>>();
+
+    match uloop_runner::run_uloop_command(&arg_refs, Some(&project_path)) {
+        Ok((stdout, stderr, exit_code)) => Ok(json!({
+            "ok": exit_code == 0,
+            "protocol": "lux.unity_uloop.v1",
+            "projectPath": project_path,
+            "uloopCommand": command,
+            "args": uloop_args,
+            "exitCode": exit_code,
+            "stdout": stdout,
+            "stderr": stderr,
+            "message": if exit_code == 0 { "Unity uloop command completed" } else { "Unity uloop command exited non-zero" }
+        })),
+        Err(error) => Ok(json!({
+            "ok": false,
+            "protocol": "lux.unity_uloop.v1",
+            "projectPath": project_path,
+            "uloopCommand": command,
+            "args": uloop_args,
+            "stopReason": "unity_uloop_unavailable",
+            "message": error.to_string()
+        })),
+    }
 }
 
 fn bridge_install(arguments: &Value, default_project_path: Option<&Path>) -> Result<Value> {
@@ -689,5 +885,61 @@ mod tests {
             result["structuredContent"]["stopReason"],
             "unity_maneuver_unavailable"
         );
+    }
+
+    #[test]
+    fn tool_definitions_expose_lazycodex_unity_contract_and_unity_uloop() {
+        let tools = tool_definitions();
+        let contract_tool = tools
+            .iter()
+            .find(|tool| tool["name"] == "lux_unity_mcp_contract")
+            .expect("LazyCodex Unity contract tool");
+        assert!(contract_tool["description"]
+            .as_str()
+            .expect("description")
+            .contains("LazyCodex"));
+        assert!(!tools
+            .iter()
+            .any(|tool| tool["name"] == "lux_capability_packages"));
+
+        let uloop_tool = tools
+            .iter()
+            .find(|tool| tool["name"] == "lux_unity_uloop")
+            .expect("Unity uloop MCP tool");
+        let properties = &uloop_tool["inputSchema"]["properties"];
+        assert!(properties.get("uloop_command").is_some());
+        assert!(properties.get("args").is_some());
+
+        let register_tool = tools
+            .iter()
+            .find(|tool| tool["name"] == "lux_unity_selection_context_register")
+            .expect("Unity selection context register MCP tool");
+        assert!(register_tool["inputSchema"]["properties"]
+            .get("context")
+            .is_some());
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "lux_unity_selection_context_latest"));
+    }
+
+    #[test]
+    fn unity_mcp_contract_projects_lazycodex_unity_tools_only() {
+        let contract = unity_mcp_contract(&Value::Null, Some(Path::new("/tmp/lux-unity")))
+            .expect("Unity MCP contract");
+        assert_eq!(contract["ok"], true);
+        assert_eq!(contract["protocol"], "lux.lazycodex_unity_mcp.v1");
+        assert_eq!(contract["engine"], "unity");
+        assert_eq!(contract["maturity"], "verified");
+        assert_eq!(contract["lazycodexNative"], true);
+        assert!(contract["tools"]
+            .as_array()
+            .expect("contract tools")
+            .iter()
+            .any(|tool| tool["name"] == "lux_bridge_diagnostics"
+                && tool["unavailableState"]["stopReason"] == "unity_bridge_unavailable"));
+        assert!(contract.get("packages").is_none());
+        assert!(contract.get("engines").is_none());
+        assert!(contract.get("godot").is_none());
+        assert!(contract.get("three_js").is_none());
     }
 }

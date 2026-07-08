@@ -42,3 +42,25 @@ x64/
 x86/
 evidence/
 .tmux-tmp/
+
+# Sample Unity project - ignore Unity-generated artifacts only
+samples/unity-bridge-smoke/Library/
+samples/unity-bridge-smoke/Temp/
+samples/unity-bridge-smoke/Obj/
+samples/unity-bridge-smoke/Logs/
+samples/unity-bridge-smoke/UserSettings/
+samples/unity-bridge-smoke/Assets/Editor/LuxBridge/
+
+# Sample Unity project artifacts
+samples/unity-bridge-smoke/Library/
+samples/unity-bridge-smoke/Temp/
+samples/unity-bridge-smoke/Obj/
+samples/unity-bridge-smoke/Logs/
+samples/unity-bridge-smoke/UserSettings/
+samples/unity-bridge-smoke/Assets/Editor/
+samples/unity-bridge-smoke/node_modules/
+samples/unity-bridge-smoke/package-lock.json
+samples/unity-bridge-smoke/package.json
+samples/unity-bridge-smoke/.lux/
+samples/unity-bridge-smoke/ProjectSettings/*.asset
+!samples/unity-bridge-smoke/ProjectSettings/ProjectVersion.txt

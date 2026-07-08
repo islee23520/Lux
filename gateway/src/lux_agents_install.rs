@@ -20,31 +20,90 @@ pub struct AgentsInstallArgs {
     pub skill_names: Option<Vec<String>>,
 }
 
-pub const LUX_WORKFLOW_SKILLS: &[(&str, &str)] = &[
-    ("lux-init", LUX_INIT_SKILL),
-    ("lux-spec", LUX_SPEC_SKILL),
-    ("lux-run", LUX_RUN_SKILL),
-    ("lux-build", LUX_BUILD_SKILL),
-    ("lux-verify", LUX_VERIFY_SKILL),
-    ("lux-triage", LUX_TRIAGE_SKILL),
-    ("lux-kanban", LUX_KANBAN_SKILL),
-    ("lux-doctor", LUX_DOCTOR_SKILL),
-    ("lux-status", LUX_STATUS_SKILL),
-    ("lux-godot", LUX_GODOT_SKILL),
+pub const LUX_WORKFLOW_SKILLS: &[BundledSkill] = &[
+    BundledSkill::new(
+        "lux-init",
+        "Initialize or repair the Lux workspace state for a Unity project.",
+        LUX_INIT_SKILL,
+    ),
+    BundledSkill::new(
+        "lux-spec",
+        "Manage the game design and delivery specification that drives Lux automation.",
+        LUX_SPEC_SKILL,
+    ),
+    BundledSkill::new(
+        "lux-run",
+        "Execute a Lux development run from project spec to verified completion.",
+        LUX_RUN_SKILL,
+    ),
+    BundledSkill::new(
+        "lux-build",
+        "Trigger and monitor the Unity WebGL build pipeline through Lux.",
+        LUX_BUILD_SKILL,
+    ),
+    BundledSkill::new(
+        "lux-verify",
+        "Run Lux verification tiers that prove the Unity project is ready for the next workflow step.",
+        LUX_VERIFY_SKILL,
+    ),
+    BundledSkill::new(
+        "lux-triage",
+        "Turn raw Unity, AI, and Lux events into deduplicated actionable tickets.",
+        LUX_TRIAGE_SKILL,
+    ),
+    BundledSkill::new(
+        "lux-kanban",
+        "Inspect and manage Lux tickets that coordinate automated and human work.",
+        LUX_KANBAN_SKILL,
+    ),
+    BundledSkill::new(
+        "lux-doctor",
+        "Diagnose and optionally repair Lux workspace, Unity, bridge, and agent integration issues.",
+        LUX_DOCTOR_SKILL,
+    ),
+    BundledSkill::new(
+        "lux-status",
+        "Read Lux server, project, bridge, run, and build state in script-friendly JSON.",
+        LUX_STATUS_SKILL,
+    ),
 ];
+
+#[derive(Debug, Clone, Copy)]
+pub struct BundledSkill {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub body: &'static str,
+}
+
+impl BundledSkill {
+    const fn new(name: &'static str, description: &'static str, body: &'static str) -> Self {
+        Self {
+            name,
+            description,
+            body,
+        }
+    }
+
+    fn render(self) -> String {
+        format!(
+            "---\nname: {}\ndescription: {}\ncategory: workflow\nsource: lux\n---\n\n{}",
+            self.name, self.description, self.body
+        )
+    }
+}
 
 pub fn run_agents_install_command(args: AgentsInstallArgs) -> Result<()> {
     let project_path = match &args.project_path {
         Some(path) => path.clone(),
-        None => std::env::current_dir().context("failed to resolve current directory")?,
+        None => crate::project::resolve_project_root(&None)?,
     };
     let target_dir = project_path.join(".agents").join("skills");
     let skills = selected_skills(args.skill_names.as_deref())?;
 
     if args.list_only {
         eprintln!("Bundled Lux workflow skills for {}:", target_dir.display());
-        for (name, _) in skills {
-            eprintln!("  {name}");
+        for skill in skills {
+            eprintln!("  {}", skill.name);
         }
         return Ok(());
     }
@@ -52,7 +111,8 @@ pub fn run_agents_install_command(args: AgentsInstallArgs) -> Result<()> {
     let mut installed = 0usize;
     let mut skipped = 0usize;
 
-    for (name, content) in skills {
+    for skill in skills {
+        let name = skill.name;
         let skill_dir = target_dir.join(name);
         let skill_file = skill_dir.join("SKILL.md");
 
@@ -64,7 +124,7 @@ pub fn run_agents_install_command(args: AgentsInstallArgs) -> Result<()> {
 
         fs::create_dir_all(&skill_dir)
             .with_context(|| format!("failed to create {}", skill_dir.display()))?;
-        write_atomic(&skill_file, content)
+        write_atomic(&skill_file, &skill.render())
             .with_context(|| format!("failed to write {}", skill_file.display()))?;
         eprintln!("Installed {name} -> {}", skill_file.display());
         installed += 1;
@@ -78,10 +138,10 @@ pub fn run_agents_install_command(args: AgentsInstallArgs) -> Result<()> {
 }
 
 pub fn list_bundled_skills() -> Vec<&'static str> {
-    LUX_WORKFLOW_SKILLS.iter().map(|(name, _)| *name).collect()
+    LUX_WORKFLOW_SKILLS.iter().map(|skill| skill.name).collect()
 }
 
-fn selected_skills(requested: Option<&[String]>) -> Result<Vec<(&'static str, &'static str)>> {
+fn selected_skills(requested: Option<&[String]>) -> Result<Vec<BundledSkill>> {
     match requested {
         None => Ok(LUX_WORKFLOW_SKILLS.to_vec()),
         Some(names) => {
@@ -89,7 +149,7 @@ fn selected_skills(requested: Option<&[String]>) -> Result<Vec<(&'static str, &'
             for requested_name in names {
                 let skill = LUX_WORKFLOW_SKILLS
                     .iter()
-                    .find(|(name, _)| name == requested_name)
+                    .find(|skill| skill.name == requested_name)
                     .copied()
                     .with_context(|| {
                         format!("unknown bundled Lux workflow skill: {requested_name}")
@@ -508,54 +568,25 @@ Expected: state such as `Idle`, `Planning`, `ExecutingTicket`, or `Verifying`.
 - In CI, parse explicit fields instead of scraping human text.
 "#;
 
-const LUX_GODOT_SKILL: &str = r#"---
-name: lux-godot
-description: Drive Godot projects through the Lux local harness with explicit capability checks.
----
-
-# lux-godot — Godot Harness Workflow
-
-## Purpose
-Use Lux as a local-first AI harness for Godot projects without overclaiming unsupported build, run, test, scene, or capture behavior.
-
-## When to Use
-- A project contains `project.godot` and should be checked through Lux.
-- An agent needs to install or verify the Godot bridge under `addons/lux_bridge/`.
-- A Codex, Claude, OpenCode, or other `.agents`-aware client needs Godot-specific safety guidance.
-
-## Workflow
-1. Run `lux godot status --project-path <project>` and inspect both `gopeak.*` and `lux.*` fields.
-2. If bridge files are missing, run `lux bridge install --project-path <project> --type godot`.
-3. Treat `gopeak.available_commands` as external GoPeak visibility only.
-4. Treat `lux.supported_commands` and `lux.unsupported_commands` as the Lux execution contract.
-5. If a requested action is unsupported, report the explicit blocker and record evidence under `.lux/` or the active task artifact.
-
-## Commands
-| Command | Use |
-| --- | --- |
-| `lux godot status --project-path <project>` | Detect Godot 4, GoPeak visibility, and Lux-supported commands. |
-| `lux bridge install --project-path <project> --type godot` | Install the managed Godot bridge files. |
-| `lux godot build --project-path <project>` | Currently exits non-zero until GoPeak-backed build verification exists. |
-
-## Gotchas
-- Do not use `--engine godot` for bridge install; this plan uses `--type godot`.
-- Do not infer Lux support from GoPeak manifest entries such as `project/build`.
-- Do not write state outside the project `.lux/` evidence/spec/ticket paths.
-"#;
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn bundled_skills_include_lux_godot() {
-        assert!(list_bundled_skills().contains(&"lux-godot"));
-        let (_, content) = LUX_WORKFLOW_SKILLS
-            .iter()
-            .find(|(name, _)| *name == "lux-godot")
-            .expect("lux-godot skill is bundled");
-        assert!(content.contains("lux godot status"));
-        assert!(content.contains("--type godot"));
-        assert!(content.contains("lux.unsupported_commands"));
+    fn bundled_skills_are_unity_first_without_removed_engine_skills() {
+        let skills = list_bundled_skills();
+        assert!(skills.contains(&"lux-build"));
+        assert!(!skills.contains(&"lux-godot"));
+    }
+
+    #[test]
+    fn bundled_skills_render_agent_frontmatter() {
+        for skill in LUX_WORKFLOW_SKILLS {
+            let rendered = skill.render();
+            assert!(rendered.starts_with("---\n"));
+            assert!(rendered.contains(&format!("name: {}\n", skill.name)));
+            assert!(rendered.contains("category: workflow\n"));
+            assert!(rendered.contains("source: lux\n---\n\n# lux-"));
+        }
     }
 }

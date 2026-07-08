@@ -33,7 +33,7 @@ Run `lux mcp install --project-path <unity-project>` when an MCP client should d
 - `lux_unity_maneuver` for one safe Unity code/scene/settings/package/asset action with evidence.
 - `lux_game_dev_loop_once` for the full installed-bridge loop, stopping after one verified loop or a specific structured failure.
 
-Expected MCP reports include `structuredContent`, step/evidence references, engine capability status, and a clear `stopReason`. If Unity or bridge discovery is unavailable, report that blocker directly; do not substitute mock success unless the caller explicitly requested a test harness. Godot and Three.js observations are not equal to Unity maturity unless their adapter-supported evidence is present.
+Expected MCP reports include `structuredContent`, step/evidence references, engine capability status, and a clear `stopReason`. If Unity or bridge discovery is unavailable, report that blocker directly; do not substitute mock success unless the caller explicitly requested a test harness. Godot and Three.js are not active LUX Unity workflow surfaces.
 
 ## Operation References
 

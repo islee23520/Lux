@@ -9,8 +9,7 @@ use serde_json::{json, Value};
 
 use crate::lux_manual_qa_io::write_manual_qa_evidence;
 use crate::lux_manual_qa_labels::{
-    capability_blocks, executable_in_path, phase_label, phase_requires_screenshot_path,
-    screenshot_path_from_stdout,
+    capability_blocks, phase_label, phase_requires_screenshot_path, screenshot_path_from_stdout,
 };
 pub use crate::lux_manual_qa_types::{
     ManualQaCapabilities, ManualQaCapabilityStatus, ManualQaCommand, ManualQaEngine,
@@ -34,18 +33,6 @@ pub fn capture_manual_qa_evidence(
             blocker_payload(request, "screenshot unavailable"),
         )?);
         return Ok(result(ManualQaStatus::Blocked, request, evidence_paths));
-    }
-
-    if request.engine == ManualQaEngine::Godot {
-        let configured = request.godot_cli.as_deref().unwrap_or("godot");
-        if executable_in_path(configured).is_none() {
-            evidence_paths.push(write_manual_qa_evidence(
-                request,
-                "godot-blocker",
-                blocker_payload(request, &format!("missing Godot CLI: {configured}")),
-            )?);
-            return Ok(result(ManualQaStatus::Blocked, request, evidence_paths));
-        }
     }
 
     let required = required_phases(request);
@@ -87,8 +74,6 @@ fn required_phases(request: &ManualQaEvidenceRequest) -> &'static [ManualQaPhase
             ManualQaPhase::DynamicCode,
             ManualQaPhase::Screenshot,
         ],
-        ManualQaEngine::Godot => &[],
-        ManualQaEngine::ThreeJs => &[ManualQaPhase::DevServer, ManualQaPhase::BrowserScreenshot],
     }
 }
 

@@ -1,13 +1,11 @@
-use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
-use crate::{lux_io, project, project_godot};
-use lux_project::{recommended_capability_blockers, EngineCapabilityBlocker, EngineKind};
+use crate::{lux_io, project};
+use lux_project::{EngineCapabilityBlocker, EngineKind};
 
 const CAPABILITY_SNAPSHOT_SCHEMA_VERSION: &str = "1";
 
@@ -56,30 +54,6 @@ impl EngineCapabilityRecord {
         }
     }
 
-    fn limited(
-        engine: EngineKind,
-        reason: impl Into<String>,
-        blocker_reason: impl Into<String>,
-        tool_available: bool,
-        manual_qa_supported: bool,
-        screenshot_supported: bool,
-        video_supported: bool,
-        blockers: Vec<EngineCapabilityBlocker>,
-    ) -> Self {
-        Self {
-            engine,
-            detected: true,
-            tool_available,
-            manual_qa_supported,
-            screenshot_supported,
-            video_supported,
-            status: EngineCapabilityStatus::Limited,
-            reason: reason.into(),
-            blocker_reason: Some(blocker_reason.into()),
-            blockers,
-        }
-    }
-
     fn unsupported(
         engine: EngineKind,
         reason: impl Into<String>,
@@ -116,8 +90,6 @@ pub struct EngineCapabilitySnapshot {
     pub reason: String,
     pub blocker_reason: Option<String>,
     pub unity: EngineCapabilityRecord,
-    pub godot: EngineCapabilityRecord,
-    pub three_js: EngineCapabilityRecord,
     pub engines: Vec<EngineCapabilityRecord>,
 }
 
@@ -151,9 +123,6 @@ pub fn collect_engine_capability_snapshot(
     let project_root = project_path.display().to_string();
 
     let unity_detected = project::detect_unity_project(project_path)?.is_some();
-    let godot_detected = project_godot::detect_godot_project(project_path).is_some();
-    let three_detected = detect_three_js_project(project_path)?.is_some();
-
     let unity = if unity_detected {
         EngineCapabilityRecord::detected(
             EngineKind::Unity,
@@ -178,61 +147,8 @@ pub fn collect_engine_capability_snapshot(
         )
     };
 
-    let godot_blockers = recommended_capability_blockers(Some(EngineKind::Godot));
-    let godot = if godot_detected {
-        EngineCapabilityRecord::limited(
-            EngineKind::Godot,
-            "Godot project markers found in project.godot",
-            godot_blockers
-                .first()
-                .map(|blocker| blocker.reason.clone())
-                .unwrap_or_else(|| {
-                    "Godot build/run/test remain blocked until GoPeak-backed verification exists"
-                        .to_string()
-                }),
-            false,
-            false,
-            false,
-            false,
-            godot_blockers,
-        )
-    } else {
-        EngineCapabilityRecord::unsupported(
-            EngineKind::Godot,
-            "Godot project markers not detected in project root.",
-            "Missing project.godot",
-            godot_blockers,
-        )
-    };
-
-    let three_js_blockers = recommended_capability_blockers(Some(EngineKind::ThreeJs));
-    let three_js = if three_detected {
-        EngineCapabilityRecord::limited(
-            EngineKind::ThreeJs,
-            "Three.js project markers found in package.json",
-            three_js_blockers
-                .first()
-                .map(|blocker| blocker.reason.clone())
-                .unwrap_or_else(|| "Three.js has no verified LUX harness yet".to_string()),
-            false,
-            false,
-            false,
-            false,
-            three_js_blockers,
-        )
-    } else {
-        EngineCapabilityRecord::unsupported(
-            EngineKind::ThreeJs,
-            "Three.js project markers not detected in project root.",
-            "Missing package.json dependency on three",
-            three_js_blockers,
-        )
-    };
-
     let active = match active_engine {
         EngineKind::Unity => &unity,
-        EngineKind::Godot => &godot,
-        EngineKind::ThreeJs => &three_js,
     };
 
     Ok(EngineCapabilitySnapshot {
@@ -249,43 +165,8 @@ pub fn collect_engine_capability_snapshot(
         reason: active.reason.clone(),
         blocker_reason: active.blocker_reason.clone(),
         unity: unity.clone(),
-        godot: godot.clone(),
-        three_js: three_js.clone(),
-        engines: vec![unity, godot, three_js],
+        engines: vec![unity],
     })
-}
-
-pub fn detect_three_js_project(project_root: &Path) -> Result<Option<String>> {
-    let package_json = project_root.join("package.json");
-    if !package_json.is_file() {
-        return Ok(None);
-    }
-
-    let text = fs::read_to_string(&package_json)
-        .with_context(|| format!("failed to read {}", package_json.display()))?;
-    let manifest: Value = serde_json::from_str(&text)
-        .with_context(|| format!("failed to parse {}", package_json.display()))?;
-    let dependency_sections = [
-        "dependencies",
-        "devDependencies",
-        "peerDependencies",
-        "optionalDependencies",
-    ];
-
-    for section in dependency_sections {
-        if manifest
-            .get(section)
-            .and_then(Value::as_object)
-            .is_some_and(|dependencies| dependencies.contains_key("three"))
-        {
-            return Ok(Some(format!(
-                "Three.js dependency detected in {}",
-                package_json.display()
-            )));
-        }
-    }
-
-    Ok(None)
 }
 
 #[cfg(test)]
@@ -297,27 +178,19 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn snapshot_includes_three_engine_records() {
+    fn snapshot_includes_unity_engine_record_only() {
         let temp = tempfile::tempdir().expect("tempdir");
 
         let snapshot =
-            collect_engine_capability_snapshot(temp.path(), lux_project::EngineKind::Godot)
+            collect_engine_capability_snapshot(temp.path(), lux_project::EngineKind::Unity)
                 .expect("snapshot");
 
         assert_eq!(snapshot.schema_version, CAPABILITY_SNAPSHOT_SCHEMA_VERSION);
-        assert_eq!(snapshot.engines.len(), 3);
+        assert_eq!(snapshot.engines.len(), 1);
         assert!(snapshot
             .engines
             .iter()
             .any(|engine| engine.engine == lux_project::EngineKind::Unity));
-        assert!(snapshot
-            .engines
-            .iter()
-            .any(|engine| engine.engine == lux_project::EngineKind::Godot));
-        assert!(snapshot
-            .engines
-            .iter()
-            .any(|engine| engine.engine == lux_project::EngineKind::ThreeJs));
     }
 
     #[test]
@@ -375,9 +248,8 @@ mod tests {
         assert!(payload["engines"].is_array());
         assert_eq!(payload["engines"][0]["engine"], "unity");
         assert_eq!(payload["engines"][0]["status"], "detected");
-        assert_eq!(payload["engines"][1]["engine"], "godot");
-        assert_eq!(payload["engines"][1]["status"], "unsupported");
-        assert_eq!(payload["engines"][2]["engine"], "three_js");
-        assert_eq!(payload["engines"][2]["status"], "unsupported");
+        assert_eq!(payload["engines"].as_array().map(Vec::len), Some(1));
+        assert!(payload.get("godot").is_none());
+        assert!(payload.get("three_js").is_none());
     }
 }

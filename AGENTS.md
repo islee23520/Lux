@@ -1,91 +1,96 @@
-# LUX Local Automation Toolkit Agent Guide
+# LUX Project Knowledge Base
 
-LUX is a local-first AI automation toolkit for game projects. It operates as an independent server/MCP control plane that communicates with engine projects through installed bridge adapters and records runtime truth under `.lux/`.
+**Generated:** 2026-07-02 12:46:54 KST
+**Commit:** 9a03ab4f
+**Branch:** develop
 
-Unity is the primary verified engine path. Godot and Three.js support must be described through explicit capability maturity tiers.
-Planned or adapter-only features must not be presented as completed behavior.
+## Overview
+LUX is a local-first Rust gateway and MCP control plane for Unity game-project automation. It installs the Unity bridge adapter into target projects, exposes CLI/HTTP/WebSocket/MCP surfaces, and records runtime truth under `.lux/`.
 
-## Codebase Structure
+Unity is the only active verified engine path. The next product priority after Unity is Ouroforge; this repository does not yet expose an Ouroforge runtime surface.
 
-| Path | Description | Tech |
-| :--- | :--- | :--- |
-| `gateway/` | Rust CLI, Axum HTTP/WS server, and MCP-facing APIs | Rust, Axum 0.7 |
-| `crates/` | Shared Rust core packages extracted from gateway responsibilities | Rust |
-| `bridge/` | Engine bridge adapter files for auto-installation | C# Editor scripts, engine-specific adapters |
-| `Skills/` | Core AI skills and references | Manifest + SKILL.md |
-| `docs/` | Project documentation | Markdown |
-| `scripts/` | Utility shell scripts | Bash/Zsh |
+## Agent Response Rules
+- Answer the user in Korean unless a more specific artifact format requires another language.
+- If the user's statement is wrong, say why it is wrong before acting on the corrected premise.
+- If the request is ambiguous enough to risk the wrong change, ask for the missing detail.
+- For files under `Skills/`, generated skill content stays English because `Skills/AGENTS.md` requires it.
 
-## Key Conventions
+## Structure
+```
+lux/
+├── gateway/       # Rust CLI, Axum server, MCP/API/tool orchestration
+├── crates/        # Shared Rust core packages with no gateway wiring
+├── bridge/        # Engine bridge source copied by lux bridge install
+├── Skills/        # Manifest-backed agent workflow library
+├── docs/          # Human-facing projection of architecture and support tiers
+├── scripts/       # Verification, policy, and structure checks
+└── website/       # Small static site, guarded by website contract checks
+```
 
-### Rust (`gateway/`)
-- Use Axum 0.7, tokio 1, clap 4.5, anyhow, and serde.
-- Error handling: Use `anyhow` for logic and `eprintln` for user output.
-- No `TODO`, `FIXME`, or `HACK` comments.
-- New endpoints must have tests in `server.rs` or `gateway_cli_smoke.rs`.
-- Server lifecycle: idle timeout with graceful shutdown (`--idle-timeout`), heartbeat (`POST /api/heartbeat`), health (`GET /api/health`).
+## Where To Look
+| Task | Location | Notes |
+| --- | --- | --- |
+| CLI command tree | `gateway/src/main.rs` | Source of truth for `lux` commands and legacy wrappers |
+| HTTP/WS routes | `gateway/src/server.rs` | Axum 0.7 routes, state extraction, SPA fallback |
+| MCP tools | `gateway/src/lux_mcp.rs` | Keep tool responses tied to `.lux/` evidence |
+| Runtime state IO | `gateway/src/lux_*`, `crates/lux-core` | `.lux/` remains canonical |
+| Shared data contracts | `crates/` | Extracted types and pure logic used by gateway/tests |
+| Unity bridge source | `bridge/unity/AiBridgeEditor/` | Installed into target Unity projects |
+| Unity bridge tests | `bridge/unity/AiBridgeTests/` | Unity Editor/NUnit verification |
+| Skill routing | `Skills/AGENTS.md` | Pick category before loading a specific skill |
+| Skill validation tools | `Skills/tools/` | Schema and category layout checks |
+| Usage | `docs/usage.md` | Docs are projections, not runtime truth |
+| Full local verification | `scripts/test-all.sh` | Runs Rust, CLI, structure, website, policy checks |
 
-### Unity Bridge (`bridge/`)
-- Contains the C# source for the Unity `AI Bridge` TCP server and protocol.
-- These files are automatically installed into target Unity projects via `lux bridge install`.
-- Maintain compatibility with Unity 6000.0+ (Unity 6).
+## Code Map
+| Symbol or Surface | Type | Location | Role |
+| --- | --- | --- | --- |
+| `lux` | CLI binary | `gateway/src/main.rs` | Command dispatch, bridge install, Unity flows |
+| `server` | Axum server | `gateway/src/server.rs` | HTTP, WebSocket, API state projection |
+| `lux_mcp` | MCP server | `gateway/src/lux_mcp.rs` | JSON-RPC tool exposure for AI clients |
+| `try_ping_unity_bridge_backend` | Rust function | `gateway/src/lib.rs` | Verifies Unity TCP backend readiness |
+| `atomic_write_json` | Rust function | `crates/lux-core/src/lib.rs` | Atomic `.lux` JSON writes |
+| `append_jsonl` | Rust function | `crates/lux-core/src/lib.rs` | Durable event log append path |
+| `SpecProject` | Rust model | `crates/lux-spec-core/src/lib.rs` | Versioned spec contract |
+| `TicketStore` | Rust model | `crates/lux-run-core/src/lib.rs` | Executable ticket and dispatch state |
+| `BridgeProtocolRequest` | Rust model | `crates/lux-bridge-core/src/protocol.rs` | Rust side bridge protocol contract |
+| `UnityAiBridgeTcpServer` | C# class | `bridge/unity/AiBridgeEditor/UnityAiBridgeTcpServer.cs` | Unity Editor TCP server |
+| `UnityAiBridgeProtocol` | C# class | `bridge/unity/AiBridgeEditor/UnityAiBridgeProtocol.cs` | Unity bridge request/response parser |
+| `scripts/policy-scan.mjs` | Policy checker | `scripts/` | Invariant and marker scan |
 
-### Skills
-- Core skills are located in `Skills/`.
-- Structure: `manifest.json`, `SKILL.md`, and `references/`.
+## Conventions
+- Rust stack: Axum 0.7, tokio 1, clap 4.5, anyhow, serde.
+- User-facing Rust errors use `anyhow` for propagation and `eprintln!` for CLI output.
+- New endpoints need tests in `gateway/src/server.rs` or `gateway/tests/gateway_cli_smoke.rs`.
+- Runtime truth lives under `.lux/`; docs, README, and API projections must not override it.
+- `gateway/` owns server and CLI wiring. `bridge/` owns engine adapter source. `Skills/` owns workflow documents.
+- Core crates must not depend on gateway-only surfaces such as Axum, Clap, process spawning, or `gateway::`.
+- Bridge install paths must be idempotent and safe to rerun.
+- Unity bridge compatibility target is Unity 6000.0+.
+- Do not reintroduce Godot or Three.js surfaces without a new accepted roadmap decision.
 
-## Verification Commands
+## Anti-Patterns
+- Do not include Unity Editor window logic such as Workbench or CodexImage in this repo.
+- Do not add GUI, dashboard, TUI, or frontend app code here.
+- Do not treat a target Unity project as part of this repository.
+- Do not present planned or adapter-only behavior as completed support.
+- Do not silently fall back to a legacy path without observable logging.
+- Do not add `TODO`, `FIXME`, or `HACK` comments.
+- Do not reactivate removed roots: `adapters/`, `seeds/`, `plugins/`, `bridge-threejs/`, `gateway/ui`, `gateway/ui-src`.
 
-### Rust
+## Commands
 ```bash
 cargo build --workspace
 cargo test --workspace
-```
-
-### CLI Help
-```bash
 cd gateway && cargo run -- bridge install --help
 cd gateway && cargo run -- serve --help
+./scripts/test-all.sh
+./scripts/test-all.sh --quick
+node scripts/policy-scan.mjs --advisory-only
 ```
 
-## Core Invariants
-
-Adapted from [alex-core-invariants](https://github.com/islee23520/alex-core-invariants). These six invariants govern every subsystem: gateway, bridge, and skills.
-
-### `.lux` is the Single Source of Truth
-
-The `.lux/` directory is the canonical state root for every Lux runtime. No other location may shadow or duplicate its data.
-
-- If `.lux/` and another source disagree, `.lux/` is the live truth.
-- Self-heal from `.lux/` when drift is detected — never from stale caches, indexes, or environment variables.
-- External state (Unity project context, AI tool sessions, event logs) enters `.lux/` through defined write paths only.
-
-### The Six Invariants
-
-| # | Invariant | Principle | Lux-specific guidance |
-|---|-----------|-----------|----------------------|
-| 1 | **SSoT** | Two truths stay two truths. Pick one. | `.lux/` is the canonical owner. Gateway state, bridge connection info, session data — all live under `.lux/`. |
-| 2 | **SoC / SRP** | Mixed responsibility survives every refactor. | `gateway/` owns server+CLI. `bridge/` owns Unity protocol. `Skills/` owns AI workflows. Cross-boundary writes require explicit interfaces. |
-| 3 | **Consistency** | Contradictions compound. | Event log schemas, API response shapes, and bridge protocol messages must stay in sync. Schema changes must propagate to all consumers before merge. |
-| 4 | **Atomicity** | Half-written state is undeclared truth. | Bridge commands must complete fully or roll back. Multi-step API operations must be transactional. Never expose partial state through server APIs. |
-| 5 | **Idempotency** | Retries must converge, not corrupt. | `lux bridge install` must be safe to re-run. Heartbeat and status endpoints must return the same result for repeated identical requests. Event deduplication must exist at the log level. |
-| 6 | **No Silent Fallback** | Silent fallback kills the core. | Never catch errors and return empty/default data. Never fall back to a legacy path without logging. Explicit failover (e.g., health check degradation) is allowed only if observable and does not alter canonical truth. |
-
-### Enforcement
-
-- `scripts/test-all.sh` — runs Rust, CLI smoke, structure, and policy checks.
-- `scripts/test-all.sh --quick` — skips the full Cargo test suite but still runs smoke, structure, and policy checks.
-- Violations found during code review must be resolved before merge.
-
-### Allow Markers
-
-In rare cases where a pattern is intentional, add a comment marker:
-- `// lux-allow-failover` — explicit, observable failover.
-- `// lux-allow-legacy` — documented transition path with sunset date.
-- `// lux-allow-dual-write` — temporary migration with removal tracked in an issue.
-
-## Anti-Patterns (DO NOT)
-- Do not include Unity Editor window logic (Workbench, CodexImage) in this repo.
-- Do not add GUI, dashboard, TUI, or frontend app code to this repo.
-- Do not include TODO/FIXME/HACK comments.
-- Do not treat the target Unity project as part of this repository.
+## Notes
+- The repository can contain dirty user work; preserve unrelated edits.
+- `.lux/` is runtime state and may contain local evidence, tickets, and session artifacts.
+- Unity Editor tests require the Unity Test Runner and are not covered by plain Cargo.
+- Generated bridge or dependency folders such as `target/` and `node_modules/` are not source hierarchy.

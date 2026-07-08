@@ -6,8 +6,6 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum ManualQaEngine {
     Unity,
-    Godot,
-    ThreeJs,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -17,9 +15,6 @@ pub enum ManualQaPhase {
     Test,
     DynamicCode,
     Screenshot,
-    DevServer,
-    BrowserScreenshot,
-    GodotVersion,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,7 +54,6 @@ pub struct ManualQaEvidenceRequest {
     pub evidence_dir: PathBuf,
     pub commands: Vec<ManualQaCommand>,
     pub capabilities: ManualQaCapabilities,
-    pub godot_cli: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

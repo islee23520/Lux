@@ -31,13 +31,6 @@ pub struct DetectedPackage {
     pub version: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GodotProjectDetection {
-    pub project_root: PathBuf,
-    pub godot_version: Option<String>,
-    pub has_godot_dir: bool,
-}
-
 pub fn detect_from_cwd() -> Result<Option<ProjectInfo>> {
     let mut current = std::env::current_dir().context("failed to read current directory")?;
     loop {
@@ -99,35 +92,6 @@ pub fn detect_unity_project(project_path: &Path) -> Result<Option<UnityProjectDe
         packages,
         test_framework_detected,
     }))
-}
-
-pub fn detect_godot_project(path: &Path) -> Option<GodotProjectDetection> {
-    let project_godot_path = path.join("project.godot");
-    if !project_godot_path.is_file() {
-        return None;
-    }
-
-    let content = match fs::read_to_string(project_godot_path) {
-        Ok(content) => content,
-        Err(error) => {
-            eprintln!("Failed to read project.godot for Godot detection: {error}");
-            return None;
-        }
-    };
-    let config_version = content
-        .lines()
-        .map(str::trim)
-        .find_map(|line| line.strip_prefix("config_version=").map(str::trim));
-
-    if config_version != Some("5") {
-        return None;
-    }
-
-    Some(GodotProjectDetection {
-        project_root: path.to_path_buf(),
-        godot_version: Some("4.x".to_string()),
-        has_godot_dir: path.join(".godot").is_dir(),
-    })
 }
 
 fn project_name_from_path(path: &Path) -> String {
@@ -203,30 +167,4 @@ fn infer_render_pipeline(packages: &[DetectedPackage]) -> Option<String> {
         return Some("hdrp".to_string());
     }
     Some("built-in".to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::detect_godot_project;
-    use tempfile::tempdir;
-
-    #[test]
-    fn detects_godot_4_project() {
-        let dir = tempdir().unwrap();
-        std::fs::write(dir.path().join("project.godot"), "config_version=5\n").unwrap();
-        std::fs::create_dir(dir.path().join(".godot")).unwrap();
-
-        let detection = detect_godot_project(dir.path()).unwrap();
-
-        assert_eq!(detection.godot_version, Some("4.x".to_string()));
-        assert!(detection.has_godot_dir);
-    }
-
-    #[test]
-    fn rejects_godot_3_project() {
-        let dir = tempdir().unwrap();
-        std::fs::write(dir.path().join("project.godot"), "config_version=4\n").unwrap();
-
-        assert!(detect_godot_project(dir.path()).is_none());
-    }
 }

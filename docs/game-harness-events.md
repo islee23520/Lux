@@ -14,4 +14,4 @@ Game-harness events are evidence-gated. They report plan, step, and iteration tr
 | `game_harness.iteration.started` | Starts a bounded run iteration after ambiguity, decisions, and capabilities are reviewed. |
 | `game_harness.iteration.completed` | Updates next goal and evidence status before another iteration can begin. |
 
-Engine support is adapter-dependent. Unity is the primary verified path; Godot and Three.js use capability routing and must expose unsupported observations as blockers rather than equal verification maturity.
+Engine support is Unity-first. Godot and Three.js are not active LUX adapter surfaces; unsupported observations should be recorded as explicit blockers instead of fake engine parity.

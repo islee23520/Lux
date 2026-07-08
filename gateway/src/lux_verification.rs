@@ -133,12 +133,6 @@ pub fn route_verification(
     if policy == "unity_uloop" {
         return route_unity_uloop(policy, ticket, opts);
     }
-    if policy == "godot_cli" {
-        return route_godot_cli(policy, ticket, opts);
-    }
-    if policy == "threejs_browser" {
-        return route_threejs_browser(policy, ticket, opts);
-    }
     if policy == "engine_blocker" {
         return route_engine_blocker(
             policy,
@@ -238,67 +232,6 @@ fn route_unity_uloop(
         ],
         opts,
     )
-}
-
-fn route_godot_cli(
-    policy: &str,
-    ticket: &Ticket,
-    opts: &VerificationOpts,
-) -> Result<RoutedVerificationResult> {
-    let configured = ticket
-        .command_allowlist
-        .as_ref()
-        .and_then(|commands| commands.first())
-        .map_or("godot", String::as_str);
-    if executable_in_path(configured).is_none() {
-        return route_engine_blocker(
-            policy,
-            opts,
-            &format!("missing CLI: {configured}"),
-            json!({
-                "mode": "router",
-                "verification_basis": "godot_cli",
-                "policy": policy,
-                "required_binary": configured,
-            }),
-        );
-    }
-    run_labeled_commands(
-        policy,
-        &[("godot-version", format!("{configured} --version"))],
-        opts,
-    )
-}
-
-fn route_threejs_browser(
-    policy: &str,
-    ticket: &Ticket,
-    opts: &VerificationOpts,
-) -> Result<RoutedVerificationResult> {
-    let commands = ticket.command_allowlist.clone().unwrap_or_default();
-    if commands.is_empty() {
-        return route_engine_blocker(
-            policy,
-            opts,
-            "threejs_browser requires an explicit browser QA command",
-            json!({
-                "mode": "router",
-                "verification_basis": "threejs_browser",
-                "policy": policy,
-                "required_surface": "browser_qa_command",
-            }),
-        );
-    }
-    let labeled = commands
-        .into_iter()
-        .enumerate()
-        .map(|(index, command)| (format!("browser-{}", index + 1), command))
-        .collect::<Vec<_>>();
-    let borrowed = labeled
-        .iter()
-        .map(|(label, command)| (label.as_str(), command.clone()))
-        .collect::<Vec<_>>();
-    run_labeled_commands(policy, &borrowed, opts)
 }
 
 fn route_engine_blocker(
@@ -678,21 +611,6 @@ fn verification_phase_label(label: &str) -> &str {
         "screenshot" => "screenshot",
         _ => label,
     }
-}
-
-fn executable_in_path(executable: &str) -> Option<PathBuf> {
-    let executable_path = Path::new(executable);
-    if executable_path.is_file() {
-        return Some(executable_path.to_path_buf());
-    }
-    if executable_path.components().count() > 1 || executable_path.is_absolute() {
-        return None;
-    }
-    std::env::var_os("PATH").and_then(|paths| {
-        std::env::split_paths(&paths)
-            .map(|path| path.join(executable))
-            .find(|candidate| candidate.is_file())
-    })
 }
 
 fn relative_evidence_dir(opts: &VerificationOpts) -> PathBuf {
@@ -2187,7 +2105,7 @@ fn parse_time(value: &str) -> Option<DateTime<Utc>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lux_ticket::{TicketFilter, TicketStatus, TicketStore};
+    use crate::lux_ticket::TicketStatus;
     use chrono::Utc;
     use std::fs;
 
@@ -2314,30 +2232,19 @@ mod tests {
     }
 
     #[test]
-    fn h7_godot_cli_missing_path_creates_blocker_evidence() {
-        let project = TestProject::new("godot-missing");
+    fn h7_removed_engine_policy_creates_unsupported_evidence() {
+        let project = TestProject::new("removed-engine-policy");
         let ticket = ticket_with_policy("godot_cli", vec!["__lux_missing_godot_cli__"]);
 
-        let result = route_verification(&ticket, &project.opts("run-godot-missing"))
-            .expect("missing Godot CLI should create blocker evidence");
+        let result = route_verification(&ticket, &project.opts("run-removed-engine-policy"))
+            .expect("removed engine policy should create blocker evidence");
 
         assert_eq!(result.status, VerificationStatus::Unsupported);
         assert_eq!(result.policy_used, "godot_cli");
         assert_eq!(result.evidence_paths.len(), 1);
         let evidence = fs::read_to_string(project.path.join(&result.evidence_paths[0]))
             .expect("blocker evidence should be readable");
-        assert!(evidence.contains("missing CLI"));
+        assert!(evidence.contains("Unsupported verification_policy: godot_cli"));
         assert!(evidence.contains("\"policy\":\"godot_cli\""));
-
-        let blockers = FileTicketStore::new(&project.path)
-            .list(TicketFilter::default())
-            .expect("blocker tickets should list");
-        assert!(
-            blockers
-                .iter()
-                .any(|ticket| ticket.title.contains("godot_cli")
-                    && ticket.description.contains("missing CLI")),
-            "missing Godot CLI must create a blocker ticket"
-        );
     }
 }

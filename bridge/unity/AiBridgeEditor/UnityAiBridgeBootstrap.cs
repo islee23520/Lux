@@ -12,6 +12,16 @@ namespace Linalab.UnityAiBridge.Editor
 
         static UnityAiBridgeBootstrap()
         {
+            // Write bridge settings on every import (safe in both interactive and batchmode)
+            try
+            {
+                Linalab.Lux.Editor.LuxBridgeSettings.WriteProjectSettings();
+            }
+            catch (System.Exception e)
+            {
+                UnityEngine.Debug.LogWarning($"Failed to auto-write LuxBridgeSettings: {e.Message}");
+            }
+
             EditorApplication.delayCall += StartIfEnabled;
             EditorApplication.update += EnsureRunningIfEnabled;
         }
